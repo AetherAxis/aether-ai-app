@@ -32,6 +32,9 @@ public partial class App : Application
     /// <summary>移动端审批 broker（bottom sheet 由 ChatView 内嵌宿主订阅）。桌面形态为 null（走模态对话框）。</summary>
     public static MobileApprovalService? MobileApproval { get; private set; }
 
+    /// <summary>移动组合根（ChatView 的齿轮入口经此解析 SettingsViewModel 等服务）。桌面为 null。</summary>
+    public static IServiceProvider? MobileProvider { get; private set; }
+
     /// <summary>启动参数（iOS/Android head 的 Main/OnCreate 转存——移动 lifetime 不暴露 Args）。
     /// --demo：自动跑规则演示 + 审批演示（模拟器验收免点按注入）。</summary>
     public static string[] LaunchArguments { get; set; } = Array.Empty<string>();
@@ -74,6 +77,7 @@ public partial class App : Application
     private static (IServiceProvider Provider, UserControl Root) BuildMobileRoot()
     {
         var provider = BuildProvider();
+        MobileProvider = provider;
         var vm = provider.GetRequiredService<ChatViewModel>();
         var root = new ChatView { DataContext = vm };
         ThemeLoader.Apply(root, ThemeLoader.GetLightJson());   // 移动形态无 WorkbenchWindow——主题直接叠根视图
@@ -83,13 +87,29 @@ public partial class App : Application
 
     /// <summary>
     /// --demo：模拟器验收的自动演示（免点按注入）——规则全链路一轮，随后审批演示触发 bottom sheet
-    /// （等待 2.5s 供截图），再程序化批准走完恢复轮。
+    /// （等待 8s 供截图），再程序化批准走完恢复轮。
+    /// --demo-llm：目标「通用助手」发一轮真模型对话（需已配置 LLM 档案；无档案自动退回 --demo 行为）。
     /// </summary>
     private static async void RunDemoIfRequested(ViewModels.ChatViewModel vm)
     {
-        if (!LaunchArguments.Contains("--demo", StringComparer.OrdinalIgnoreCase)) return;
+        var args = LaunchArguments;
+        if (!args.Contains("--demo", StringComparer.OrdinalIgnoreCase)
+            && !args.Contains("--demo-llm", StringComparer.OrdinalIgnoreCase)) return;
         try
         {
+            if (args.Contains("--demo-llm", StringComparer.OrdinalIgnoreCase)
+                && vm.AgentTargetItems.Any(t => t.Id == "assistant"))
+            {
+                // 真模型一轮：流式渲染走真实 LLM（DeepSeek 等）。截图窗 3-15s。
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+                {
+                    vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "assistant");
+                    vm.InputText = "用一句话自我介绍，再说 2+2 等于几。";
+                    await vm.SendInputCommand.ExecuteAsync(null);
+                });
+                return;
+            }
+
             await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
             {
                 // 目标列表 InitializeAsync 已填好。

@@ -13,10 +13,10 @@
   <!-- Panel 根：聊天内容 + 审批 bottom sheet 叠加层（移动形态激活——App.MobileApproval broker 驱动；桌面休眠） -->
   <Panel>
   <DockPanel>
-    <!-- 头部：agent 选择 / token 用量 / 历史会话 / 新聊天 -->
+    <!-- 头部：agent 选择 / token 用量 / 历史会话 / 新聊天 / 设置（齿轮，仅移动形态显示） -->
     <Border DockPanel.Dock="Top" Classes="pane-head" Padding="16,0" Background="{DynamicResource CardBgBrush}"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
         <Border Grid.Column="0" Classes="chip" VerticalAlignment="Center">
           <ComboBox Classes="compact" ItemsSource="{Binding AgentTargetItems}" SelectedItem="{Binding SelectedAgentTarget}"
                     PlaceholderText="选择 agent">
@@ -98,6 +98,12 @@
         <Button Grid.Column="3" Command="{Binding NewChatCommand}" Classes="ghost" Padding="8,4" FontSize="12"
                 ToolTip.Tip="新聊天" VerticalAlignment="Center">
           <Path Data="{x:Static wb:Codicons.Add}" Stretch="Uniform" Width="14" Height="14"
+                Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+        </Button>
+        <!-- 设置（移动形态：桌面走 ⑩ 工作台的设置 tab，齿轮隐藏——code-behind 控制） -->
+        <Button Grid.Column="4" x:Name="SettingsGearButton" Click="OnSettingsGear" Classes="ghost" Padding="8,4"
+                ToolTip.Tip="设置" VerticalAlignment="Center" IsVisible="False">
+          <Path Data="{x:Static wb:Codicons.SettingsGear}" Stretch="Uniform" Width="14" Height="14"
                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
         </Button>
       </Grid>
@@ -277,6 +283,23 @@
         </StackPanel>
       </Border>
     </Panel>
+  </Border>
+  <!-- ═══ 设置浮层（移动形态）：同一份 SettingsView。桌面走 ⑩ 工作台设置 tab，本浮层不显示 ═══ -->
+  <Border x:Name="SettingsOverlay" IsVisible="False" Background="{DynamicResource ContentBgBrush}">
+    <DockPanel>
+      <Border DockPanel.Dock="Top" Classes="pane-head" Padding="16,0" Background="{DynamicResource CardBgBrush}"
+              BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Text="设置" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
+                     Foreground="{DynamicResource TextPrimaryBrush}"/>
+          <Button Grid.Column="1" Click="OnSettingsClose" Classes="ghost" Padding="10,6" ToolTip.Tip="返回聊天">
+            <Path Data="{x:Static wb:Codicons.ChromeClose}" Stretch="Uniform" Width="14" Height="14"
+                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+          </Button>
+        </Grid>
+      </Border>
+      <views:SettingsView x:Name="MobileSettingsView"/>
+    </DockPanel>
   </Border>
   </Panel>
 </UserControl>
