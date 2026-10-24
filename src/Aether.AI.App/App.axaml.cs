@@ -140,8 +140,7 @@ public partial class App : Application
     /// <summary>组合 DI 容器。configure：测试注入口（最后执行——可覆盖任何默认注册，如假审批框/内联 dispatcher）。</summary>
     public static IServiceProvider BuildProvider(string? dataDirectory = null, Action<IServiceCollection>? configure = null)
     {
-        var dataDir = dataDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aether", "aether-ai-app");
+        var dataDir = dataDirectory ?? ResolveDataDirectory();
         Directory.CreateDirectory(dataDir);
 
         var services = new ServiceCollection();
@@ -197,5 +196,30 @@ public partial class App : Application
 
         configure?.Invoke(services);
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// 数据目录解析（行为驱动，不做平台判断）：首选 <c>~/.aether/aether-ai-app</c>（macOS 桌面 / Android
+    /// 的 UserProfile 映射到沙箱 files 目录，均可写）；**iOS 真机的容器根禁止建目录**（EPERM——模拟器不限制，
+    /// 真机限制，2026-10-24 实机闪退根因）→ 退 <c>~/Library/Application Support/aether-ai-app</c>
+    /// （iOS 惯例位：沙箱内可写、随设备备份）。
+    /// </summary>
+    private static string ResolveDataDirectory()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(home))
+            home = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        var preferred = Path.Combine(home, ".aether", "aether-ai-app");
+        try
+        {
+            Directory.CreateDirectory(preferred);
+            return preferred;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            var fallback = Path.Combine(home, "Library", "Application Support", "aether-ai-app");
+            Directory.CreateDirectory(fallback);
+            return fallback;
+        }
     }
 }
