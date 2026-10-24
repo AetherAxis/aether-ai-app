@@ -4,9 +4,9 @@ using Aether.AI.Core.Agents;
 namespace Aether.AI.App.Core;
 
 /// <summary>
-/// agent 目录端口：聊天页「对话目标」下拉的数据源。M1 为内置定义（<see cref="BuiltInAgentCatalog"/>）；
-/// M2 换 ⑬ aether-knowledge 的 labs 目录实现（agents/*.agent.md 经 CustomAgentDefinition 映射）——
-/// 消费方（runner/VM）只认本端口，切换不动。
+/// 内置 agent 目录（M1）：进程内定义——规则演示 agent（无 key 全链路）+ LLM 助手（有配置时才有意义）
+/// + 审批演示 agent（Dangerous 工具走审批循环）。宿主可经 <see cref="AetherAppOptions.Agents"/> /
+/// <see cref="AetherAppOptions.DynamicAgents"/> 追加（动态源每次枚举求值）。
 /// </summary>
 public interface IAgentCatalog
 {
@@ -15,24 +15,21 @@ public interface IAgentCatalog
     Task<AgentDefinition?> GetAsync(string agentId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// 内置 agent 目录（M1）：进程内静态定义——规则演示 agent（无 key 全链路）+ LLM 助手（有配置时才有意义）
-/// + 审批演示 agent（ Dangerous 工具走审批循环）。宿主可经 <see cref="AetherAppOptions.Agents"/> 追加。
-/// </summary>
+/// <summary>基于 <see cref="Func{TResult}"/> 源的目录实现（源每次枚举求值——支持动态增删）。</summary>
 public sealed class BuiltInAgentCatalog : IAgentCatalog
 {
-    private readonly List<AgentDefinition> _agents;
+    private readonly Func<IEnumerable<AgentDefinition>> _source;
 
-    public BuiltInAgentCatalog(IEnumerable<AgentDefinition> agents)
+    public BuiltInAgentCatalog(Func<IEnumerable<AgentDefinition>> source)
     {
-        _agents = agents.ToList();
+        _source = source;
     }
 
     public Task<IReadOnlyList<AgentDefinition>> GetAllAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult<IReadOnlyList<AgentDefinition>>(_agents);
+        => Task.FromResult<IReadOnlyList<AgentDefinition>>(_source().ToList());
 
     public Task<AgentDefinition?> GetAsync(string agentId, CancellationToken cancellationToken = default)
-        => Task.FromResult(_agents.FirstOrDefault(a => a.Id == agentId));
+        => Task.FromResult(_source().FirstOrDefault(a => a.Id == agentId));
 }
 
 /// <summary>

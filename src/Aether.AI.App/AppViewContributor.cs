@@ -20,6 +20,6 @@ public sealed class AppViewContributor : IViewRegistryContributor
 
         registry.Register(PanelKeys.Settings,
             () => new SettingsView(),
-            () => null);
+            () => services.GetRequiredService<SettingsViewModel>());
     }
 }

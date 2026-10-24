@@ -50,7 +50,9 @@ tests/…Core.Tests/          8 例：引擎分段/审批卡状态迁移/取消�
 
 关键结构决策：**审批协作循环收在 ⑫**（`HarnessRuntime.RunInteractiveAsync`，本仓促成的 API 回馈）——
 引擎只经 `ApprovalResponder` 缝做卡片状态迁移，不再自持 while 循环（monorepo 桌面/手机各一份的老病根）。
-LLM 大脑凭 `~/.aether/aether-ai-app/llm-configs.json` opt-in（OpenAI-compatible）。
+LLM 大脑凭设置页管理（OpenAI-compatible 档案 CRUD + 测试连接 + **切换免重启**——M2-lite，2026-10-24 实装）：
+宿主自注册 `IChatClientFactory`（⑫ 兼容缝）+ `LlmConfigState` 动态选中 → `AppLlmClientFactory` 清缓存 +
+`runner.Invalidate("assistant")` → 设置页切档案下一轮对话即换模型；「通用助手」agent 随档案存亡动态出现在目录。
 
 ### 移动端（方案A 实证，2026-10-24）
 

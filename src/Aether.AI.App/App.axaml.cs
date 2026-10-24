@@ -134,18 +134,13 @@ public partial class App : Application
 
         // —— ⑫ AI 平台：大脑取舍在此（Core 只认 HarnessRuntime）——
         services.AddRuleBrains();                 // program 规则后端：恒注册（零 key 全链路 + 审批演示）
-        var (llmConfigs, selectedName) = LlmConfigStore.Load(Path.Combine(dataDir, "llm-configs.json"));
-        LlmConfig? llm = null;
-        if (llmConfigs.Count > 0 && selectedName is not null)
-        {
-            llm = llmConfigs.FirstOrDefault(c => c.Name == selectedName) ?? llmConfigs[0];
-            services.AddLlmBrains(o =>
-            {
-                o.ApiKey = llm.ApiKey;
-                o.ModelId = llm.ModelId;
-                if (!string.IsNullOrEmpty(llm.Endpoint)) o.Endpoint = llm.Endpoint;
-            });
-        }
+        // LLM 走「宿主自注册 IChatClientFactory」兼容缝（非 AddLlmBrains 固定 options）：
+        // 设置页换选中档案 → factory 清缓存 + runner.Invalidate → 下一轮即换模型。
+        var llmPath = Path.Combine(dataDir, "llm-configs.json");
+        services.AddSingleton(new LlmConfigState(llmPath));
+        services.AddSingleton<AppLlmClientFactory>();
+        services.AddSingleton<Aether.AI.Brains.Abstractions.IChatClientFactory>(sp => sp.GetRequiredService<AppLlmClientFactory>());
+        services.AddLlmBrainFactory();
         var aether = services.AddAetherAI();
         // Echo 演示工具：Dangerous 等级（审批演示 agent 的 RequireToolApproval 会拦它走审批循环；
         // 不开审批的 agent 照常直跑——等级只在审批开启时参与门控）。
@@ -158,8 +153,10 @@ public partial class App : Application
         services.AddAetherAiApp(o =>
         {
             o.DataDirectory = dataDir;
-            if (llm is not null)
-                o.Agents = new[] { DefaultAgents.LlmAssistant(llm.ModelId) };
+            // 动态源：有 LLM 档案才挂「通用助手」（ModelId 空 = 走当前选中档案）。
+            o.DynamicAgents = sp => sp.GetRequiredService<LlmConfigState>().HasConfigs
+                ? new[] { DefaultAgents.LlmAssistant() }
+                : Array.Empty<AgentDefinition>();
         });
 
         // —— App 服务：UI 端口实现（按形态取舍）+ VM ——
@@ -176,6 +173,7 @@ public partial class App : Application
             services.AddSingleton<IApprovalDialogService>(MobileApproval);
         }
         services.AddSingleton<ChatViewModel>();
+        services.AddSingleton<SettingsViewModel>();
 
         configure?.Invoke(services);
         return services.BuildServiceProvider();

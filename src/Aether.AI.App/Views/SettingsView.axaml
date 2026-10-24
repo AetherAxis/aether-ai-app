@@ -1,26 +1,101 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:wb="using:Aether.Workbench"
              x:Class="Aether.AI.App.Views.SettingsView"
              Background="{DynamicResource ContentBgBrush}">
 
-  <!-- M2 占位：LLM 档案 CRUD / 主题切换入口。当前 LLM 配置经 llm-configs.json 手工维护。 -->
-  <StackPanel Margin="24" Spacing="12" MaxWidth="560">
-    <TextBlock Text="设置" FontSize="17" FontWeight="SemiBold"/>
-    <TextBlock Text="LLM 连接档案（M2 提供编辑 UI）" FontSize="13" FontWeight="Medium" Margin="0,8,0,0"/>
-    <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}"
-            BorderThickness="1" CornerRadius="8" Padding="12,10">
-      <StackPanel Spacing="6">
-        <TextBlock Text="在 ~/.aether/aether-ai-app/llm-configs.json 放入 OpenAI-compatible 连接档案即可启用 LLM 助手（无需重编译）："
-                   FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
-        <TextBlock Text='[{"name":"本地 GLM","endpoint":"https://api.example.com/v1","apiKey":"sk-...","modelId":"glm-4.7"}]&#10;{"Configs":[...],"Selected":"本地 GLM"}'
-                   FontSize="11" FontFamily="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
-                   TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}"/>
-        <TextBlock Text="未配置时聊天页仍有规则大脑（零 key 全链路）。"
-                   FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-      </StackPanel>
-    </Border>
-    <TextBlock Text="主题" FontSize="13" FontWeight="Medium" Margin="0,8,0,0"/>
-    <TextBlock Text="左下角设置按钮 → 主题菜单（light / dark / dream 系，⑩ 引擎 JSON overlay 换肤）。"
-               FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-  </StackPanel>
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="20" Spacing="14" MaxWidth="640">
+
+      <TextBlock Text="设置" FontSize="17" FontWeight="SemiBold"/>
+
+      <!-- ═══ LLM 连接档案 ═══ -->
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="0" Text="LLM 连接档案（OpenAI-compatible）" FontSize="13" FontWeight="Medium" VerticalAlignment="Center"/>
+        <Button Grid.Column="1" Command="{Binding NewConfigCommand}" Content="＋ 新增" Classes="ghost" FontSize="12"
+                Foreground="{DynamicResource AccentBrush}"/>
+      </Grid>
+      <TextBlock Text="选中的档案即「通用助手」用的模型——切换后下一轮对话生效，无需重启。密钥只存本机 llm-configs.json。"
+                 FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+
+      <!-- 档案列表 -->
+      <ItemsControl ItemsSource="{Binding Configs}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Classes="msg-card" Margin="0,0,0,6" Padding="12,8">
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+                <Ellipse Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
+                         Fill="{DynamicResource AccentBrush}" IsVisible="{Binding IsCurrent}"/>
+                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="当前" FontSize="10" Foreground="{DynamicResource AccentBrush}"
+                               VerticalAlignment="Center" IsVisible="{Binding IsCurrent}"/>
+                  </StackPanel>
+                  <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}">
+                    <Run Text="{Binding ModelId}"/><Run Text=" · "/><Run Text="{Binding Endpoint}"/>
+                  </TextBlock>
+                </StackPanel>
+                <Button Grid.Column="2" Command="{Binding SelectCommand}" CommandParameter="{Binding}"
+                        Content="设为当前" Classes="ghost" FontSize="11" IsVisible="{Binding !IsCurrent}"
+                        Foreground="{DynamicResource AccentBrush}"/>
+                <Button Grid.Column="3" Command="{Binding EditCommand}" CommandParameter="{Binding}"
+                        Classes="ghost" Padding="6,4" ToolTip.Tip="编辑">
+                  <Path Data="{x:Static wb:Codicons.Edit}" Stretch="Uniform" Width="13" Height="13"
+                        Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                </Button>
+                <Button Grid.Column="4" Command="{Binding DeleteCommand}" CommandParameter="{Binding}"
+                        Classes="ghost" Padding="6,4" ToolTip.Tip="删除">
+                  <Path Data="{x:Static wb:Codicons.Trash}" Stretch="Uniform" Width="13" Height="13"
+                        Fill="{DynamicResource DangerBrush}"/>
+                </Button>
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- 表单（新增/编辑共用） -->
+      <Border Classes="chat-input-card">
+        <StackPanel Spacing="10">
+          <TextBlock FontSize="12" FontWeight="Medium" Foreground="{DynamicResource TextPrimaryBrush}">
+            <Run Text="{Binding SaveButtonText}"/>
+          </TextBlock>
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+            <StackPanel Grid.Column="0" Spacing="4">
+              <TextBlock Text="名称" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              <TextBox Text="{Binding FormName}" PlaceholderText="如：本地 GLM" FontSize="13" MinHeight="36"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="4">
+              <TextBlock Text="模型" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              <TextBox Text="{Binding FormModelId}" PlaceholderText="如：glm-4.7" FontSize="13" MinHeight="36"/>
+            </StackPanel>
+          </Grid>
+          <StackPanel Spacing="4">
+            <TextBlock Text="Endpoint（OpenAI 官方可留空）" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            <TextBox Text="{Binding FormEndpoint}" PlaceholderText="https://api.example.com/v1" FontSize="13" MinHeight="36"/>
+          </StackPanel>
+          <StackPanel Spacing="4">
+            <TextBlock Text="API Key" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            <TextBox Text="{Binding FormApiKey}" PasswordChar="•" PlaceholderText="sk-…" FontSize="13" MinHeight="36"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Button Command="{Binding SaveConfigCommand}" Content="{Binding SaveButtonText}"
+                    Classes="primary" Padding="16,8" FontSize="13" MinHeight="38"/>
+            <Button Command="{Binding TestConnectionCommand}" Content="测试连接"
+                    Padding="16,8" FontSize="13" MinHeight="38"
+                    IsEnabled="{Binding !IsTesting}"/>
+          </StackPanel>
+          <TextBlock Text="{Binding StatusText}" FontSize="12" TextWrapping="Wrap"
+                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+        </StackPanel>
+      </Border>
+
+      <!-- 主题 -->
+      <TextBlock Text="主题" FontSize="13" FontWeight="Medium" Margin="0,8,0,0"/>
+      <TextBlock Text="左下角设置按钮 → 主题菜单（light / dark / dream 系，⑩ 引擎 JSON overlay 换肤）。"
+                 FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>
