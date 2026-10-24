@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:wb="using:Aether.Workbench"
+             x:Class="Aether.AI.App.Views.AgentsView"
+             Background="{DynamicResource ContentBgBrush}">
+
+  <!-- M2 占位：agent/workflow/rule 目录与编辑器（⑬ aether-knowledge labs 目录接入） -->
+  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" MaxWidth="420">
+    <Path Data="{x:Static wb:Codicons.Hubot}" Stretch="Uniform" Width="40" Height="40"
+          Fill="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+    <TextBlock Text="Agents 管理" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+    <TextBlock Text="M2 里接 ⑬ aether-knowledge 的 labs 目录（agents/*.agent.md / rules / coderules）——目录、编辑、生效链。当前可用内置 agent 在聊天页顶部下拉选择。"
+               FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+               TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"/>
+  </StackPanel>
+</UserControl>

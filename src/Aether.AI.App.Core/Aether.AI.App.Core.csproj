@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Aether.AI.App.Core</RootNamespace>
+    <!-- 无 Avalonia 引用：聊天引擎/持久化/运行桥可在任何宿主（桌面/移动/未来 console/服务器）复用。
+         UI 线程调度经 IUiDispatcher 端口注入，审批经 IApprovalDialogService 端口注入。 -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ⑫ AI 平台：Hosting（传递 Harness/Core/Brains.Abstractions/Memory）+ SQLite 落盘。
+         大脑实现的取舍（Rule/LLM/编译）留在组合根（App 层）——Core 只认 HarnessRuntime。 -->
+    <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Hosting\Aether.AI.Hosting.csproj" />
+    <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Memory.Sqlite\Aether.AI.Memory.Sqlite.csproj" />
+  </ItemGroup>
+
+</Project>

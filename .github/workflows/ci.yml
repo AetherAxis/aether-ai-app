@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # 本仓 checkout 到仓名目录（跨仓 ProjectReference 解析到同级 <dep>/ 目录）
+      - uses: actions/checkout@v4
+        with:
+          path: aether-ai-app
+      # 跨仓依赖（本地 ProjectReference 拓扑——切 PackageReference 后可移除）：
+      # ai-app → aether-ai / aether-workbench
+      - uses: actions/checkout@v4
+        with:
+          repository: AetherAxis/aether-ai
+          path: aether-ai
+      - uses: actions/checkout@v4
+        with:
+          repository: AetherAxis/aether-workbench
+          path: aether-workbench
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      # L1：桌面链构建（Core/App/Desktop——slnx 里的 spike android/ios TFM 需本机 workload，CI 暂不覆盖；
+      #     移动 TFM 的构建与实跑见 README M0 记录，后续增专门 workflow）
+      - name: Build
+        run: dotnet build aether-ai-app/src/Aether.AI.App.Desktop/Aether.AI.App.Desktop.csproj -c Release
+      # L1.5：测试（Core 引擎分段/审批/持久化往返）
+      - name: Test
+        run: dotnet test aether-ai-app/tests/Aether.AI.App.Core.Tests/Aether.AI.App.Core.Tests.csproj -c Release
+      # L2（无 GUI 等价物）：真实 DI 组合链跑规则大脑全链路 + 审批自恢复，exit 0 = 通过
+      - name: Headless smoke (L2)
+        run: dotnet run --project aether-ai-app/src/Aether.AI.App.Desktop -c Release -- --smoke

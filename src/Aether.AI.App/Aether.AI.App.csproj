@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 反射绑定（与 ⑪ 同款）；M3 若改 compiled bindings 再翻转 -->
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <RootNamespace>Aether.AI.App</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Markdown.Avalonia.Tight" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- App.Core（无 UI 引擎/持久化/运行桥） -->
+    <ProjectReference Include="..\Aether.AI.App.Core\Aether.AI.App.Core.csproj" />
+    <!-- ⑩ 布局引擎（桌面壳/主题系统） -->
+    <ProjectReference Include="..\..\..\aether-workbench\src\Aether.Workbench\Aether.Workbench.csproj" />
+    <!-- 大脑实现（组合根在此取舍——Core 只认 HarnessRuntime）：
+         Rule（program 后端，零 key 全链路）+ LLM（OpenAI-compatible，凭 llm-configs.json opt-in）。
+         编译大脑（Roslyn/FCS）刻意不引——那是桌面形态后续 opt-in，移动闭包保持干净。 -->
+    <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Brains.Rule\Aether.AI.Brains.Rule.csproj" />
+    <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Brains.Llm\Aether.AI.Brains.Llm.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,234 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:app="using:Aether.AI.App"
+             xmlns:views="using:Aether.AI.App.Views"
+             xmlns:wb="using:Aether.Workbench"
+             x:Class="Aether.AI.App.Views.ChatView"
+             Background="{DynamicResource ContentBgBrush}">
+
+  <UserControl.Resources>
+    <app:ChatModeConverter x:Key="ChatModeConverter" />
+  </UserControl.Resources>
+
+  <DockPanel>
+    <!-- 头部：agent 选择 / token 用量 / 历史会话 / 新聊天 -->
+    <Border DockPanel.Dock="Top" Classes="pane-head" Padding="16,0" Background="{DynamicResource CardBgBrush}"
+            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+        <Border Grid.Column="0" Classes="chip" VerticalAlignment="Center">
+          <ComboBox Classes="compact" ItemsSource="{Binding AgentTargetItems}" SelectedItem="{Binding SelectedAgentTarget}"
+                    PlaceholderText="选择 agent">
+            <ComboBox.SelectionBoxItemTemplate>
+              <DataTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding DisplayIcon}" FontSize="11" /><TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" />
+                </StackPanel>
+              </DataTemplate>
+            </ComboBox.SelectionBoxItemTemplate>
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="{Binding DisplayIcon}" FontSize="13" VerticalAlignment="Center" />
+                  <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding Name}" FontSize="13" />
+                    <TextBlock Text="{Binding Description}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </StackPanel>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </Border>
+        <TextBlock Grid.Column="1" Text="{Binding TokenInfo}" VerticalAlignment="Center" FontSize="12"
+                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="16,0,0,0" TextTrimming="CharacterEllipsis"/>
+        <!-- 历史会话（Flyout 下拉） -->
+        <Button Grid.Column="2" x:Name="HistoryFlyoutButton" Classes="ghost" Padding="8,4" FontSize="12" ToolTip.Tip="历史会话"
+                VerticalAlignment="Center">
+          <Path Data="{x:Static wb:Codicons.History}" Stretch="Uniform" Width="14" Height="14"
+                Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedRight">
+              <Border Width="300" MaxHeight="420">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Top" Text="历史会话" FontSize="12" FontWeight="SemiBold"
+                             Margin="0,0,0,8" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Conversations}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Button Classes="ghost" HorizontalAlignment="Stretch" Margin="0,2"
+                                  Command="{Binding ResumeCommand}"
+                                  CommandParameter="{Binding}"
+                                  Click="OnConversationClicked">
+                            <Button.ContextFlyout>
+                              <MenuFlyout>
+                                <MenuItem Header="删除"
+                                          Command="{Binding DeleteCommand}"
+                                          CommandParameter="{Binding}"/>
+                              </MenuFlyout>
+                            </Button.ContextFlyout>
+                            <StackPanel Spacing="2" HorizontalAlignment="Left">
+                              <DockPanel>
+                                <TextBlock Text="{Binding DisplayTime}" DockPanel.Dock="Right"
+                                           FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                <!-- 后台/前台运行角标 ⏳ -->
+                                <TextBlock Text="⏳" DockPanel.Dock="Right" FontSize="11"
+                                           IsVisible="{Binding IsRunning}"
+                                           VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12"
+                                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                              </DockPanel>
+                              <TextBlock Text="{Binding Preview}" FontSize="11"
+                                         Foreground="{DynamicResource TextSecondaryBrush}"
+                                         TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                            </StackPanel>
+                          </Button>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </DockPanel>
+              </Border>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+        <!-- 新聊天 -->
+        <Button Grid.Column="3" Command="{Binding NewChatCommand}" Classes="ghost" Padding="8,4" FontSize="12"
+                ToolTip.Tip="新聊天" VerticalAlignment="Center">
+          <Path Data="{x:Static wb:Codicons.Add}" Stretch="Uniform" Width="14" Height="14"
+                Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+        </Button>
+      </Grid>
+    </Border>
+
+    <!-- 底部：plan-accept 条 + 活动计划面板 + 输入卡 -->
+    <Border DockPanel.Dock="Bottom" Padding="16,10,16,8" Background="{DynamicResource ContentBgBrush}">
+      <StackPanel Spacing="6">
+        <!-- plan-accept 条：plan 模式下计划就绪后提示接受→执行 -->
+        <Border Classes="chat-input-card" Padding="12,8" IsVisible="{Binding ShowPlanAccept}" CornerRadius="12">
+          <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <Path Data="{x:Static wb:Codicons.ListFlat}" Stretch="Uniform" Width="14" Height="14"
+                  Fill="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="计划已就绪" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}"/>
+            <Button Classes="primary" Command="{Binding AcceptPlanCommand}" Padding="14,6" FontSize="12">
+              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Path Data="{x:Static wb:Codicons.Check}" Stretch="Uniform" Width="12" Height="12"
+                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center"/>
+                <TextBlock Text="接受，开始执行" FontSize="12" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Border>
+        <!-- 活动计划面板 + 输入卡：Spacing=0 紧贴，计划贴在输入框上沿 -->
+        <StackPanel Spacing="0">
+          <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                  CornerRadius="10" Padding="0" MaxHeight="240" IsVisible="{Binding HasActivePlan}">
+            <Grid RowDefinitions="Auto,*">
+              <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                <Button Grid.Column="0" Command="{Binding TogglePlanExpandedCommand}" Background="Transparent" BorderThickness="0"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="14,8" CornerRadius="10">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding PlanSummary}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <Path Data="{x:Static wb:Codicons.ChevronDown}" Stretch="Uniform" Width="10" Height="10"
+                          Fill="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
+                          IsVisible="{Binding IsPlanExpanded}"/>
+                    <Path Data="{x:Static wb:Codicons.ChevronRight}" Stretch="Uniform" Width="10" Height="10"
+                          Fill="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
+                          IsVisible="{Binding !IsPlanExpanded}"/>
+                  </StackPanel>
+                </Button>
+                <Button Grid.Column="1" Command="{Binding DismissPlanCommand}" IsVisible="{Binding ShowPlanDismiss}"
+                        Content="确认执行完毕" Background="Transparent" BorderThickness="0" Padding="10,8" FontSize="12"
+                        Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+              </Grid>
+              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                            IsVisible="{Binding IsPlanExpanded}" Padding="14,0,14,8">
+                <ItemsControl ItemsSource="{Binding ActiveTodos}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,3">
+                        <Path Data="{x:Static wb:Codicons.CircleOutline}" Stretch="Uniform" Width="12" Height="12"
+                              Fill="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
+                              IsVisible="{Binding !IsComplete}"/>
+                        <Path Data="{x:Static wb:Codicons.Check}" Stretch="Uniform" Width="12" Height="12"
+                              Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center"
+                              IsVisible="{Binding IsComplete}"/>
+                        <TextBlock Text="{Binding Title}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"
+                                   IsVisible="{Binding !IsComplete}"/>
+                        <TextBlock Text="{Binding Title}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                   TextDecorations="Strikethrough"
+                                   IsVisible="{Binding IsComplete}"/>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Grid>
+          </Border>
+          <Border Classes="chat-input-card">
+            <Grid RowDefinitions="Auto,*">
+              <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="10,10,10,8" HorizontalAlignment="Stretch">
+                <!-- 运行模式选择器（4 档）：运行中切档逐工具即时生效 -->
+                <Border Classes="chip" IsVisible="{Binding HasModeSupport}">
+                  <ComboBox IsVisible="{Binding HasModeSupport}"
+                            ItemsSource="{x:Static app:ChatModes.All}"
+                            SelectedItem="{Binding SelectedChatMode, Converter={StaticResource ChatModeConverter}}"
+                            Classes="compact" Padding="8,4" FontSize="11" MinWidth="96"
+                            ToolTip.Tip="运行模式：规划(先计划) / 手动(每步审批) / 自动编辑(危险前问) / 自动(全自动)">
+                    <ComboBox.SelectionBoxItemTemplate>
+                      <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                          <Path Data="{Binding IconPath}" Stretch="Uniform" Width="11" Height="11"
+                                Fill="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                          <TextBlock Text="{Binding Label}" FontSize="11" VerticalAlignment="Center"/>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ComboBox.SelectionBoxItemTemplate>
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                          <Path Data="{Binding IconPath}" Stretch="Uniform" Width="12" Height="12"
+                                Fill="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                          <TextBlock Text="{Binding Label}" FontSize="12" VerticalAlignment="Center"/>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </Border>
+              </WrapPanel>
+              <Grid Grid.Row="1">
+                <TextBox Classes="chat-text" Text="{Binding InputText}" PlaceholderText="输入消息与助手对话…"
+                         IsEnabled="{Binding !IsAgentRunning}" CaretBrush="{DynamicResource TextPrimaryBrush}">
+                  <TextBox.KeyBindings>
+                    <KeyBinding Gesture="Enter" Command="{Binding SendInputCommand}" />
+                  </TextBox.KeyBindings>
+                </TextBox>
+                <!-- 运行中显示停止按钮，否则显示发送按钮 -->
+                <Button Classes="send-btn" Command="{Binding SendInputCommand}" IsEnabled="{Binding CanSendInput}"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,8,8"
+                        IsVisible="{Binding !IsAgentRunning}"
+                        ToolTip.Tip="发送（Enter）">
+                  <Path Data="{x:Static wb:Codicons.Send}" Stretch="Uniform" Width="16" Height="16"
+                        Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                </Button>
+                <Button Classes="send-btn" Command="{Binding StopGenerationCommand}"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,8,8"
+                        IsVisible="{Binding IsAgentRunning}"
+                        Background="{DynamicResource DangerBrush}" BorderThickness="0" ToolTip.Tip="停止生成">
+                  <Rectangle Width="11" Height="11" Fill="{DynamicResource OnDangerBrush}"/>
+                </Button>
+              </Grid>
+            </Grid>
+          </Border>
+        </StackPanel>
+        <TextBlock Text="内容由 AI 生成，请核实重要信息" FontSize="11"
+                   Foreground="{DynamicResource TextSecondaryBrush}" Opacity="0.7" HorizontalAlignment="Center" />
+      </StackPanel>
+    </Border>
+
+    <!-- 消息区委托给共享控件（模板 + 滚动/贴底/历史加载 全在它内） -->
+    <views:ChatMessagesView />
+  </DockPanel>
+</UserControl>

@@ -1,0 +1,43 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wb="using:Aether.Workbench"
+        x:Class="Aether.AI.App.Views.ApprovalDialog"
+        Title="工具审批"
+        Width="440" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Background="{DynamicResource ContentBgBrush}">
+
+  <StackPanel Margin="20" Spacing="14">
+    <StackPanel Orientation="Horizontal" Spacing="10">
+      <Path Data="{x:Static wb:Codicons.Warning}" Stretch="Uniform" Width="20" Height="20"
+            Fill="{DynamicResource WarningBrush}" VerticalAlignment="Center"/>
+      <StackPanel Spacing="2">
+        <TextBlock Text="需要你的确认" FontSize="15" FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+        <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+          <Run Text="agent 想执行工具 "/><Run Text="{Binding ToolName}" FontWeight="SemiBold"/><Run Text="（Dangerous 级）"/>
+        </TextBlock>
+      </StackPanel>
+    </StackPanel>
+
+    <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1" CornerRadius="8" Padding="12,8">
+      <StackPanel Spacing="4">
+        <TextBlock Text="参数" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/>
+        <TextBlock Text="{Binding InputSummary}" FontSize="12" TextWrapping="Wrap"
+                   FontFamily="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
+                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+      </StackPanel>
+    </Border>
+
+    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
+      <Button Content="拒绝" Click="OnReject" Padding="16,8" FontSize="13"
+              Background="{DynamicResource DangerBrush}" Foreground="White" BorderThickness="0"/>
+      <Button Content="取消本轮" Click="OnCancel" Padding="16,8" FontSize="13" Classes="ghost"/>
+      <Button Content="批准执行" Click="OnApprove" Padding="16,8" FontSize="13"
+              Background="{DynamicResource AccentBrush}" Foreground="{DynamicResource OnAccentBrush}" BorderThickness="0"/>
+    </StackPanel>
+  </StackPanel>
+</Window>

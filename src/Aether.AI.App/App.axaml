@@ -1,0 +1,12 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Aether.AI.App.App"
+             RequestedThemeVariant="Default">
+    <!-- "Default" 跟随系统；桌面壳换肤由 ⑩ 引擎的 JSON overlay 主题体系驱动（WorkbenchWindow 内接） -->
+
+    <Application.Styles>
+        <FluentTheme />
+        <!-- 聊天卡/输入卡/气泡等 chat 专用样式（画刷走 ⑩ 主题 token 的 DynamicResource） -->
+        <StyleInclude Source="avares://Aether.AI.App/ChatTheme.axaml"/>
+    </Application.Styles>
+</Application>

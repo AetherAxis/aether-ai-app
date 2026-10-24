@@ -1,5 +1,10 @@
 <Solution>
-  <!-- M0 spike 期：shared 库 + 三平台 head。M1 落 src/App.Core 正式结构时重构本清单。 -->
+  <!-- M1 正式结构：Core（无 UI 引擎）+ App（Avalonia 共享 UI）+ Desktop head + tests。
+       spike/（M0 原型）保留至 M3 移动 head 落地后移除。 -->
+  <Project Path="src/Aether.AI.App.Core/Aether.AI.App.Core.csproj" />
+  <Project Path="src/Aether.AI.App/Aether.AI.App.csproj" />
+  <Project Path="src/Aether.AI.App.Desktop/Aether.AI.App.Desktop.csproj" />
+  <Project Path="tests/Aether.AI.App.Core.Tests/Aether.AI.App.Core.Tests.csproj" />
   <Project Path="spike/Aether.AI.App.Spike/Aether.AI.App.Spike.csproj" />
   <Project Path="spike/Aether.AI.App.Spike.Desktop/Aether.AI.App.Spike.Desktop.csproj" />
   <Project Path="spike/Aether.AI.App.Spike.Android/Aether.AI.App.Spike.Android.csproj" />

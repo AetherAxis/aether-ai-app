@@ -32,9 +32,30 @@
 - iOS 软键盘行为、真机（AOT 发布档）验证：需实机，M1/M3 安排。
 - **本机运维发现**：Claude Code 会话的 shell 连不上 adb 标准端口 5037（连接被丢弃，非沙箱开关可绕过）。绕法：`adb -P 5038 start-server` 后全程 `-P 5038`——adb server 自己会扫描 5554+ 发现模拟器。
 
+## M1（2026-10-24）：桌面聊天 MVP 落地 `src/`
+
+```
+src/Aether.AI.App.Core/     无 UI 引擎层：ChatSessionEngine（分段交错流 + 审批 resolver 缝）、
+                            ConversationRuntime/ChatItems、TranscriptPersister/HistoryLoader/TurnRebuilder、
+                            AgentRunner（⑫ HarnessRuntime 桥：会话映射/同会话串行/Invalidate/Evict）、
+                            LlmConfigStore、AddAetherAiApp() 组合
+src/Aether.AI.App/          Avalonia 共享 UI：ChatView/ChatMessagesView（思考卡/工具卡/审批卡/计划卡/
+                            markdown 完成态）、ChatViewModel（多会话并发/4 档模式/历史增量）、
+                            ApprovalDialog、⑩ workbench 三 tab 壳（chat/agents/settings）
+src/Aether.AI.App.Desktop/  桌面 head（--smoke 无头冒烟：规则全链路 + 审批自恢复双断言）
+tests/…Core.Tests/          8 例：引擎分段/审批卡状态迁移/取消路径、决策矩阵、持久化→重建往返
+```
+
+关键结构决策：**审批协作循环收在 ⑫**（`HarnessRuntime.RunInteractiveAsync`，本仓促成的 API 回馈）——
+引擎只经 `ApprovalResponder` 缝做卡片状态迁移，不再自持 while 循环（monorepo 桌面/手机各一份的老病根）。
+LLM 大脑凭 `~/.aether/aether-ai-app/llm-configs.json` opt-in（OpenAI-compatible）。
+
 ## 构建
 
 ```bash
-dotnet build aether-ai-app.slnx                        # 全部 TFM（含 android/ios）
-dotnet run --project spike/Aether.AI.App.Spike.Desktop # 桌面窗口
+dotnet build src/Aether.AI.App.Desktop -c Debug    # 桌面链（Core+App+⑩⑫ 传递）
+dotnet test tests/Aether.AI.App.Core.Tests         # 8 例
+dotnet run --project src/Aether.AI.App.Desktop     # GUI
+dotnet run --project src/Aether.AI.App.Desktop -- --smoke   # 无头冒烟（exit 0 = L2 无 GUI 等价）
+dotnet build aether-ai-app.slnx                    # 全仓（含 spike 的 android/ios TFM，需本机 workload）
 ```

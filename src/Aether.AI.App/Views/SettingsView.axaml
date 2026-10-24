@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Aether.AI.App.Views.SettingsView"
+             Background="{DynamicResource ContentBgBrush}">
+
+  <!-- M2 占位：LLM 档案 CRUD / 主题切换入口。当前 LLM 配置经 llm-configs.json 手工维护。 -->
+  <StackPanel Margin="24" Spacing="12" MaxWidth="560">
+    <TextBlock Text="设置" FontSize="17" FontWeight="SemiBold"/>
+    <TextBlock Text="LLM 连接档案（M2 提供编辑 UI）" FontSize="13" FontWeight="Medium" Margin="0,8,0,0"/>
+    <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1" CornerRadius="8" Padding="12,10">
+      <StackPanel Spacing="6">
+        <TextBlock Text="在 ~/.aether/aether-ai-app/llm-configs.json 放入 OpenAI-compatible 连接档案即可启用 LLM 助手（无需重编译）："
+                   FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+        <TextBlock Text='[{"name":"本地 GLM","endpoint":"https://api.example.com/v1","apiKey":"sk-...","modelId":"glm-4.7"}]&#10;{"Configs":[...],"Selected":"本地 GLM"}'
+                   FontSize="11" FontFamily="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
+                   TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}"/>
+        <TextBlock Text="未配置时聊天页仍有规则大脑（零 key 全链路）。"
+                   FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+      </StackPanel>
+    </Border>
+    <TextBlock Text="主题" FontSize="13" FontWeight="Medium" Margin="0,8,0,0"/>
+    <TextBlock Text="左下角设置按钮 → 主题菜单（light / dark / dream 系，⑩ 引擎 JSON overlay 换肤）。"
+               FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+  </StackPanel>
+</UserControl>
