@@ -4,6 +4,8 @@
   <Project Path="src/Aether.AI.App.Core/Aether.AI.App.Core.csproj" />
   <Project Path="src/Aether.AI.App/Aether.AI.App.csproj" />
   <Project Path="src/Aether.AI.App.Desktop/Aether.AI.App.Desktop.csproj" />
+  <Project Path="src/Aether.AI.App.Android/Aether.AI.App.Android.csproj" />
+  <Project Path="src/Aether.AI.App.iOS/Aether.AI.App.iOS.csproj" />
   <Project Path="tests/Aether.AI.App.Core.Tests/Aether.AI.App.Core.Tests.csproj" />
   <Project Path="tests/Aether.AI.App.Tests/Aether.AI.App.Tests.csproj" />
   <Project Path="spike/Aether.AI.App.Spike/Aether.AI.App.Spike.csproj" />

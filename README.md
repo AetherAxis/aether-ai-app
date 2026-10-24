@@ -30,7 +30,9 @@
 - `OperatingSystem.IsIOS()/IsAndroid()` 在 net10.0 共享程序集内实测返回 false（iOS/Android 运行时均如此）——M1 平台分支改用 Avalonia 运行时探测或 TFM 条件编译。
 - Android safe-area 报 0：需 edge-to-edge 模式 + `IInsetsManager` 直读验证。
 - iOS 软键盘行为、真机（AOT 发布档）验证：需实机，M1/M3 安排。
-- **本机运维发现**：Claude Code 会话的 shell 连不上 adb 标准端口 5037（连接被丢弃，非沙箱开关可绕过）。绕法：`adb -P 5038 start-server` 后全程 `-P 5038`——adb server 自己会扫描 5554+ 发现模拟器。
+- **本机运维发现（两条，Android 验收时踩过两次）**：
+  1. Claude Code 会话的 shell 连不上 adb 标准端口 5037（连接被丢弃）。绕法：`adb -P 5038 start-server` 后全程 `-P 5038`——注意要在模拟器起来**之后**再（重）启 5038 server，它只在启动时扫描 5554+。
+  2. **本机启动无头 Android 模拟器（qemu + swiftshader）会弄坏登录会话的 CGS 显示列表**（`CGGetActiveDisplayList` → 0）：此后所有新起的 GUI 进程（含 Avalonia RenderTimer -6661）与 `screencapture` 全部失败，重登/显示器睡眠唤醒后才恢复。Android 验收完若要跑桌面 GUI，先确认 `swift disptest.swift` 报 count=1。
 
 ## M1（2026-10-24）：桌面聊天 MVP 落地 `src/`
 
@@ -49,6 +51,19 @@ tests/…Core.Tests/          8 例：引擎分段/审批卡状态迁移/取消�
 关键结构决策：**审批协作循环收在 ⑫**（`HarnessRuntime.RunInteractiveAsync`，本仓促成的 API 回馈）——
 引擎只经 `ApprovalResponder` 缝做卡片状态迁移，不再自持 while 循环（monorepo 桌面/手机各一份的老病根）。
 LLM 大脑凭 `~/.aether/aether-ai-app/llm-configs.json` opt-in（OpenAI-compatible）。
+
+### 移动端（方案A 实证，2026-10-24）
+
+同一份 ChatView/ChatViewModel/Core 直跑 iOS 与 Android（`src/Aether.AI.App.{iOS,Android}` head）：
+
+- **iOS（iPhone 16 Pro 模拟器）**：主题 overlay 叠根视图（无 Window 形态）、规则全链路、
+  **审批 bottom sheet**（截图留证：sheet 打开态 + 已批准终态）、safe-area 正确。
+- **Android（ai_spike AVD）**：同款 sheet 打开态 + 已批准终态截图留证；`--demo` 经
+  `am start --es demo 1` → `App.LaunchArguments`（MainActivity 在 Avalonia 初始化前转存）。
+- 移动端审批 = `MobileApprovalService` broker + ChatView 内嵌 bottom sheet（桌面休眠）；
+  桌面 = 模态对话框——同一 VM/引擎，只换 IApprovalDialogService 端口实现。
+- 待 M3：Page 族移动壳（NavigationPage/TabbedPage + TopCommandBar/BottomCommandBar——Avalonia 12 原语）、
+  iOS 软键盘/真机 AOT、Android edge-to-edge 深化。
 
 ## 构建
 

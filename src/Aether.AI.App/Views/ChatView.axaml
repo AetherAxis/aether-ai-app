@@ -10,6 +10,8 @@
     <app:ChatModeConverter x:Key="ChatModeConverter" />
   </UserControl.Resources>
 
+  <!-- Panel 根：聊天内容 + 审批 bottom sheet 叠加层（移动形态激活——App.MobileApproval broker 驱动；桌面休眠） -->
+  <Panel>
   <DockPanel>
     <!-- 头部：agent 选择 / token 用量 / 历史会话 / 新聊天 -->
     <Border DockPanel.Dock="Top" Classes="pane-head" Padding="16,0" Background="{DynamicResource CardBgBrush}"
@@ -231,4 +233,50 @@
     <!-- 消息区委托给共享控件（模板 + 滚动/贴底/历史加载 全在它内） -->
     <views:ChatMessagesView />
   </DockPanel>
+
+  <!-- ═══ 审批 bottom sheet（移动形态）：半透明幕布 + 底部卡片。桌面形态 App.MobileApproval 为 null，永不显示 ═══ -->
+  <Border x:Name="ApprovalBackdrop" IsVisible="False" Background="#99000000">
+    <Panel>
+      <Border x:Name="ApprovalSheet" VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
+              Background="{DynamicResource ContentBgBrush}" BorderBrush="{DynamicResource BorderBrush}"
+              BorderThickness="1,0,0,0" CornerRadius="16,16,0,0" Padding="20,16,20,24" MaxWidth="480">
+        <StackPanel Spacing="14">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Path Data="{x:Static wb:Codicons.Warning}" Stretch="Uniform" Width="20" Height="20"
+                  Fill="{DynamicResource WarningBrush}" VerticalAlignment="Center"/>
+            <StackPanel Spacing="2">
+              <TextBlock Text="需要你的确认" FontSize="16" FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+                <Run Text="agent 想执行工具 "/><Run x:Name="ApprovalToolRun" FontWeight="SemiBold"/><Run Text="（Dangerous 级）"/>
+              </TextBlock>
+            </StackPanel>
+          </StackPanel>
+
+          <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                  BorderThickness="1" CornerRadius="8" Padding="12,8">
+            <StackPanel Spacing="4">
+              <TextBlock Text="参数" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              <TextBlock x:Name="ApprovalInputText" FontSize="12" TextWrapping="Wrap"
+                         FontFamily="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
+                         Foreground="{DynamicResource TextPrimaryBrush}"/>
+            </StackPanel>
+          </Border>
+
+          <!-- 触控尺寸按钮（MinHeight 44） -->
+          <StackPanel Spacing="8">
+            <Button Click="OnSheetApprove" MinHeight="44" FontSize="15" Content="批准执行"
+                    Background="{DynamicResource AccentBrush}" Foreground="{DynamicResource OnAccentBrush}"
+                    BorderThickness="0" CornerRadius="10"/>
+            <Button Click="OnSheetReject" MinHeight="44" FontSize="15" Content="拒绝"
+                    Background="{DynamicResource DangerBrush}" Foreground="{DynamicResource OnDangerBrush}"
+                    BorderThickness="0" CornerRadius="10"/>
+            <Button Click="OnSheetCancel" MinHeight="44" FontSize="15" Content="取消本轮"
+                    Classes="ghost" Foreground="{DynamicResource TextSecondaryBrush}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Panel>
+  </Border>
+  </Panel>
 </UserControl>

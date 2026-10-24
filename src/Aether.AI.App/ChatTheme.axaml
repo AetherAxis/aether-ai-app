@@ -85,11 +85,11 @@
     <Setter Property="FontSize" Value="14"/>
   </Style>
 
-  <!-- 发送/停止圆按钮 -->
+  <!-- 发送/停止圆按钮（40px 触控尺寸——桌面/移动共用；方案A：一套样式按最大公约数） -->
   <Style Selector="Button.send-btn">
-    <Setter Property="Width" Value="32"/>
-    <Setter Property="Height" Value="32"/>
-    <Setter Property="CornerRadius" Value="16"/>
+    <Setter Property="Width" Value="40"/>
+    <Setter Property="Height" Value="40"/>
+    <Setter Property="CornerRadius" Value="20"/>
     <Setter Property="Padding" Value="0"/>
     <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
     <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}"/>

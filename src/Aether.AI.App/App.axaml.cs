@@ -9,7 +9,9 @@ using Aether.AI.Hosting;
 using Aether.AI.Harness.Tools;
 using Aether.Workbench;
 using Aether.Workbench.Abstractions;
+using Aether.Workbench.Theming;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.AI;
@@ -19,11 +21,21 @@ namespace Aether.AI.App;
 
 /// <summary>
 /// ⑮ 组合根：⑩ 布局引擎（桌面壳）+ ⑫ AI 平台（Rule 大脑恒注册；LLM 大脑凭 llm-configs.json opt-in）
-/// + App.Core（引擎/持久化/运行桥）→ AI 助手 App。M1 为桌面 head（WorkbenchWindow）；
-/// 移动 head（Page 族壳 + 主题接入）按里程碑 M3 落地。
+/// + App.Core（引擎/持久化/运行桥）→ AI 助手 App。
+/// <para>三形态分派（方案A）：桌面 → WorkbenchWindow 三 tab 壳；Android（IActivityApplicationLifetime）
+/// 与 iOS（ISingleViewApplicationLifetime）→ 同一份 <see cref="ChatView"/> 直接作根视图 + ⑩ 主题 overlay
+/// 叠加在根上（无窗口形态）+ 审批走内嵌 bottom sheet（<see cref="MobileApprovalService"/>）。
+/// 移动壳（Page 族导航/底部 tab）属 M3；当前移动分支已是可用的「全屏聊天」预览形态。</para>
 /// </summary>
 public partial class App : Application
 {
+    /// <summary>移动端审批 broker（bottom sheet 由 ChatView 内嵌宿主订阅）。桌面形态为 null（走模态对话框）。</summary>
+    public static MobileApprovalService? MobileApproval { get; private set; }
+
+    /// <summary>启动参数（iOS/Android head 的 Main/OnCreate 转存——移动 lifetime 不暴露 Args）。
+    /// --demo：自动跑规则演示 + 审批演示（模拟器验收免点按注入）。</summary>
+    public static string[] LaunchArguments { get; set; } = Array.Empty<string>();
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -34,6 +46,7 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var provider = BuildProvider();
+            WorkbenchServices.Attach(provider);   // ⑩ 视图层（WorkspaceView code-behind）经此解析 IViewRegistry 等
 
             var shell = provider.GetRequiredService<WorkbenchShellViewModel>();
             shell.RestoreThemeSync();             // 窗口 Show 前同步恢复主题（免首帧 flash）
@@ -43,8 +56,65 @@ public partial class App : Application
             _ = shell.InitializeAsync();          // 恢复布局 + 激活工作台（不阻塞首帧）
             _ = provider.GetRequiredService<ChatViewModel>().InitializeAsync();
         }
+        else if (ApplicationLifetime is IActivityApplicationLifetime activity)
+        {
+            var (provider, root) = BuildMobileRoot();
+            activity.MainViewFactory = () => root;
+        }
+        else if (ApplicationLifetime is ISingleViewApplicationLifetime singleView)
+        {
+            var (_, root) = BuildMobileRoot();
+            singleView.MainView = root;
+        }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>移动根视图：同一份 ChatView + ⑩ 主题 overlay 叠加在根（资源沿树解析，子树全生效）。</summary>
+    private static (IServiceProvider Provider, UserControl Root) BuildMobileRoot()
+    {
+        var provider = BuildProvider();
+        var vm = provider.GetRequiredService<ChatViewModel>();
+        var root = new ChatView { DataContext = vm };
+        ThemeLoader.Apply(root, ThemeLoader.GetLightJson());   // 移动形态无 WorkbenchWindow——主题直接叠根视图
+        _ = vm.InitializeAsync().ContinueWith(_ => RunDemoIfRequested(vm));
+        return (provider, root);
+    }
+
+    /// <summary>
+    /// --demo：模拟器验收的自动演示（免点按注入）——规则全链路一轮，随后审批演示触发 bottom sheet
+    /// （等待 2.5s 供截图），再程序化批准走完恢复轮。
+    /// </summary>
+    private static async void RunDemoIfRequested(ViewModels.ChatViewModel vm)
+    {
+        if (!LaunchArguments.Contains("--demo", StringComparer.OrdinalIgnoreCase)) return;
+        try
+        {
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                // 目标列表 InitializeAsync 已填好。
+                vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "rule-demo");
+                vm.InputText = "查600000";
+                await vm.SendInputCommand.ExecuteAsync(null);
+            });
+
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "rule-approve");
+                vm.InputText = "报单IF2406";
+                await vm.SendInputCommand.ExecuteAsync(null);   // → bottom sheet 弹出并挂起等审批
+            });
+
+            await Task.Delay(8000);   // 窗口期：审批 sheet 开着供截图（模拟器冷启动 + 轮次排队需几秒）
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => MobileApproval?.Complete(
+                new Aether.AI.Core.Agents.ToolApprovalDecision(
+                    MobileApproval is { } b && b.HasPending ? b.PendingRequestId! : string.Empty,
+                    Approved: true, Reason: "演示批准", AlwaysApprove: false)));
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[demo] {ex}");
+        }
     }
 
     /// <summary>组合 DI 容器。configure：测试注入口（最后执行——可覆盖任何默认注册，如假审批框/内联 dispatcher）。</summary>
@@ -92,9 +162,19 @@ public partial class App : Application
                 o.Agents = new[] { DefaultAgents.LlmAssistant(llm.ModelId) };
         });
 
-        // —— App 服务：UI 端口实现 + VM ——
+        // —— App 服务：UI 端口实现（按形态取舍）+ VM ——
+        var isDesktop = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime;
         services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
-        services.AddSingleton<IApprovalDialogService, ApprovalDialogService>();
+        if (isDesktop)
+        {
+            services.AddSingleton<IApprovalDialogService, ApprovalDialogService>();
+        }
+        else
+        {
+            // 移动形态：无 Window 可模态——审批走 ChatView 内嵌 bottom sheet（broker 经 App.MobileApproval 暴露）。
+            MobileApproval = new MobileApprovalService();
+            services.AddSingleton<IApprovalDialogService>(MobileApproval);
+        }
         services.AddSingleton<ChatViewModel>();
 
         configure?.Invoke(services);
