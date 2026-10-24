@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Aether.AI.App.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 直接引 UI 层：VM 级集成测试走真实组合根（App.BuildProvider），不需要初始化 Avalonia
+         （ChatViewModel/引擎全走 IUiDispatcher 端口；测试注入内联实现）。 -->
+    <ProjectReference Include="..\..\src\Aether.AI.App\Aether.AI.App.csproj" />
+  </ItemGroup>
+
+</Project>

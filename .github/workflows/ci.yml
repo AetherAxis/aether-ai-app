@@ -35,9 +35,11 @@ jobs:
       #     移动 TFM 的构建与实跑见 README M0 记录，后续增专门 workflow）
       - name: Build
         run: dotnet build aether-ai-app/src/Aether.AI.App.Desktop/Aether.AI.App.Desktop.csproj -c Release
-      # L1.5：测试（Core 引擎分段/审批/持久化往返）
+      # L1.5：测试（Core 引擎分段/审批/持久化往返 + VM 级集成——真实组合根全链路）
       - name: Test
-        run: dotnet test aether-ai-app/tests/Aether.AI.App.Core.Tests/Aether.AI.App.Core.Tests.csproj -c Release
+        run: |
+          dotnet test aether-ai-app/tests/Aether.AI.App.Core.Tests/Aether.AI.App.Core.Tests.csproj -c Release
+          dotnet test aether-ai-app/tests/Aether.AI.App.Tests/Aether.AI.App.Tests.csproj -c Release
       # L2（无 GUI 等价物）：真实 DI 组合链跑规则大脑全链路 + 审批自恢复，exit 0 = 通过
       - name: Headless smoke (L2)
         run: dotnet run --project aether-ai-app/src/Aether.AI.App.Desktop -c Release -- --smoke

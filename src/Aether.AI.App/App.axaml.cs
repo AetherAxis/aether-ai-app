@@ -47,8 +47,8 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    /// <summary>组合 DI 容器（供桌面 head 与未来测试/移动 head 复用）。</summary>
-    public static IServiceProvider BuildProvider(string? dataDirectory = null)
+    /// <summary>组合 DI 容器。configure：测试注入口（最后执行——可覆盖任何默认注册，如假审批框/内联 dispatcher）。</summary>
+    public static IServiceProvider BuildProvider(string? dataDirectory = null, Action<IServiceCollection>? configure = null)
     {
         var dataDir = dataDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aether", "aether-ai-app");
@@ -97,6 +97,7 @@ public partial class App : Application
         services.AddSingleton<IApprovalDialogService, ApprovalDialogService>();
         services.AddSingleton<ChatViewModel>();
 
+        configure?.Invoke(services);
         return services.BuildServiceProvider();
     }
 }
