@@ -22,6 +22,14 @@ internal static class Program
             return;
         }
 
+        // LLM 真模型冒烟：真实组合 + assistant 一轮流式对话，断言 token 流与终答非空。
+        // 需先配置 llm-configs.json（设置页或手工）；无档案时 SKIP（exit 0——不阻塞无 key 环境）。
+        if (args.Contains("--llm-smoke"))
+        {
+            LlmSmokeAsync().GetAwaiter().GetResult();
+            return;
+        }
+
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
@@ -71,5 +79,49 @@ internal static class Program
             ok = false;
         }
         Environment.ExitCode = ok ? 0 : 1;
+    }
+
+    /// <summary>
+    /// LLM 真模型链路冒烟：走真实数据目录（~/.aether/aether-ai-app）与完整 DI 组合，
+    /// 「通用助手」一轮流式对话——断言流式 token 段数 &gt; 0 且终答非空（reasoning 段计数随模型而定，
+    /// deepseek-reasoner 应 &gt; 0）。无档案时 SKIP。
+    /// </summary>
+    private static async Task LlmSmokeAsync()
+    {
+        var provider = App.BuildProvider();
+        var state = provider.GetRequiredService<Aether.AI.App.Core.LlmConfigState>();
+        if (!state.HasConfigs)
+        {
+            Console.WriteLine("[llm-smoke] SKIP：无 LLM 档案（先在设置页配置）");
+            Environment.ExitCode = 0;
+            return;
+        }
+
+        var runner = provider.GetRequiredService<Aether.AI.App.Core.IAgentRunner>();
+        var tokens = 0;
+        var reasoning = 0;
+        var usage = "";
+        try
+        {
+            var full = await runner.RunInteractiveAsync(Guid.NewGuid(), "assistant",
+                "用一句话自我介绍，然后说出 2+2 等于几。",
+                handlers: new Aether.AI.Core.Agents.StreamHandlers(
+                    OnToken: (t, _) => { tokens++; return Task.CompletedTask; },
+                    OnReasoning: (r, _) => { reasoning++; return Task.CompletedTask; },
+                    OnUsage: u => usage = u));
+
+            var ok = !string.IsNullOrWhiteSpace(full) && tokens > 0;
+            Console.WriteLine($"[llm-smoke] 档案={state.SelectedName} 模型={state.Selected?.ModelId}");
+            Console.WriteLine($"[llm-smoke] 流式 token 段={tokens}，reasoning 段={reasoning}，usage={usage}");
+            Console.WriteLine(ok
+                ? $"[llm-smoke] PASS ✅ 终答：{full}"
+                : $"[llm-smoke] FAIL ❌ tokens={tokens}，full=\"{full}\"");
+            Environment.ExitCode = ok ? 0 : 1;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[llm-smoke] EXCEPTION ❌ {ex}");
+            Environment.ExitCode = 1;
+        }
     }
 }

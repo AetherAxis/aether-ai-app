@@ -73,6 +73,8 @@ LLM 大脑凭设置页管理（OpenAI-compatible 档案 CRUD + 测试连接 + **
 dotnet build src/Aether.AI.App.Desktop -c Debug    # 桌面链（Core+App+⑩⑫ 传递）
 dotnet test tests/Aether.AI.App.Core.Tests         # 8 例
 dotnet run --project src/Aether.AI.App.Desktop     # GUI
-dotnet run --project src/Aether.AI.App.Desktop -- --smoke   # 无头冒烟（exit 0 = L2 无 GUI 等价）
+dotnet run --project src/Aether.AI.App.Desktop -- --smoke       # 规则全链路 + 审批自恢复（exit 0 = L2 无 GUI 等价）
+dotnet run --project src/Aether.AI.App.Desktop -- --llm-smoke    # LLM 真模型冒烟（需已配置档案；无档案 SKIP）
+# 实测（2026-10-24，DeepSeek）：deepseek-chat 流式 token 段>0 ✅；deepseek-reasoner reasoning 段>0（💭 思考卡路径）✅
 dotnet build aether-ai-app.slnx                    # 全仓（含 spike 的 android/ios TFM，需本机 workload）
 ```
