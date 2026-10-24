@@ -1,0 +1,7 @@
+<Solution>
+  <!-- M0 spike 期：shared 库 + 三平台 head。M1 落 src/App.Core 正式结构时重构本清单。 -->
+  <Project Path="spike/Aether.AI.App.Spike/Aether.AI.App.Spike.csproj" />
+  <Project Path="spike/Aether.AI.App.Spike.Desktop/Aether.AI.App.Spike.Desktop.csproj" />
+  <Project Path="spike/Aether.AI.App.Spike.Android/Aether.AI.App.Spike.Android.csproj" />
+  <Project Path="spike/Aether.AI.App.Spike.iOS/Aether.AI.App.Spike.iOS.csproj" />
+</Solution>

@@ -1,0 +1,51 @@
+<ContentPage xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mdc="clr-namespace:Markdown.Avalonia;assembly=Markdown.Avalonia"
+             x:Class="Aether.AI.App.Spike.MainView"
+             Background="#f7f7fa">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+
+    <!-- 页头：⑩ 主题证据 + 平台 + safe-area 实测值 -->
+    <Border Grid.Row="0" Background="#1f1f25" Padding="14,10">
+      <StackPanel Spacing="2">
+        <TextBlock Text="Aether AI App · M0 Spike" FontSize="14" FontWeight="Bold" Foreground="White"/>
+        <TextBlock Text="{Binding Header}" FontSize="11" Foreground="#a8a8b3"/>
+        <TextBlock x:Name="PlatformText" FontSize="11" Foreground="#a8a8b3" Text="platform: …"/>
+        <TextBlock x:Name="SafeAreaText" FontSize="11" Foreground="#a8a8b3" Text="safe-area: …"/>
+      </StackPanel>
+    </Border>
+
+    <!-- safe-area 目测条：自动避让生效时整页缩进刘海/Home Indicator 之内（红条不触物理边） -->
+    <Border Grid.Row="1" Height="8" Background="#e5484d"/>
+
+    <!-- 事件流：token / 工具 / 进度 / sqlite 全留痕 -->
+    <ScrollViewer Grid.Row="2" x:Name="Transcript" Padding="14,6">
+      <ItemsControl ItemsSource="{Binding Events}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding}" FontSize="11" Foreground="#3c3c46"
+                       TextWrapping="Wrap" Margin="0,1"/>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <!-- markdown 移动端渲染样例（Markdown.Avalonia.Tight，与 monorepo 桌面端同款） -->
+    <Border Grid.Row="3" Padding="14,6" BorderBrush="#d8d8e0" BorderThickness="0,1,0,0">
+      <mdc:MarkdownScrollViewer Markdown="**Markdown 渲染**（Tight）&#10;&#10;- 行内 `code` 与 **粗体**&#10;- 列表、标题移动端可用性"/>
+    </Border>
+
+    <!-- 终答断言 + 输入区 -->
+    <StackPanel Grid.Row="4" Margin="14,8" Spacing="6">
+      <TextBlock Text="{Binding Result}" FontSize="13" TextWrapping="Wrap" FontWeight="SemiBold"/>
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBox Text="{Binding Input}" PlaceholderText="输入（默认 查600000）"
+                 IsEnabled="{Binding !IsRunning}" FontSize="14"/>
+        <Button Grid.Column="1" Content="发送" Command="{Binding SendCommand}"
+                Margin="8,0,0,0" MinWidth="72" MinHeight="40"/>
+      </Grid>
+    </StackPanel>
+
+  </Grid>
+</ContentPage>

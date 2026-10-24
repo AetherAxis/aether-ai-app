@@ -1,0 +1,10 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:spike="using:Aether.AI.App.Spike"
+        x:Class="Aether.AI.App.Spike.MainWindow"
+        Title="Aether AI App · M0 Spike"
+        Width="420" Height="760">
+
+  <!-- 手机比例窗口：桌面上一眼预演移动布局 -->
+  <spike:MainView DataContext="{Binding}"/>
+</Window>

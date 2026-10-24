@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 反射绑定（不写 x:DataType），与 ⑪ aether-desktop 同款 -->
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <RootNamespace>Aether.AI.App.Spike</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Markdown.Avalonia.Tight" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ⑫ AI 平台：Hosting（传递 Harness / Core / Brains.Abstractions）+ Rule 大脑（program 后端）
+         + SQLite 记忆/会话存储（移动端 e_sqlite3 native 载入验证点）。
+         纪律：spike 依赖闭包刻意不含 Roslyn / FCS / 编译大脑——那是桌面形态的 opt-in 能力。 -->
+    <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Hosting\Aether.AI.Hosting.csproj" />
+    <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Brains.Rule\Aether.AI.Brains.Rule.csproj" />
+    <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Memory.Sqlite\Aether.AI.Memory.Sqlite.csproj" />
+    <!-- ⑩ 布局引擎：spike 只验证移动 TFM 可引用 + 主题清单可读（M1 才接壳） -->
+    <ProjectReference Include="..\..\..\aether-workbench\src\Aether.Workbench\Aether.Workbench.csproj" />
+  </ItemGroup>
+
+</Project>

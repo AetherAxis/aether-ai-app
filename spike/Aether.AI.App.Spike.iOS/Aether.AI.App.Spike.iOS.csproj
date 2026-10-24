@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <SupportedOSPlatformVersion>13.0</SupportedOSPlatformVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Aether.AI.App.Spike.iOS</RootNamespace>
+    <AssemblyName>AetherAIAppSpike</AssemblyName>
+    <!-- 模拟器构建免签名；真机部署时再注入 codesign 配置（Entitlements.plist 已就位） -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.iOS" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aether.AI.App.Spike\Aether.AI.App.Spike.csproj" />
+  </ItemGroup>
+
+</Project>

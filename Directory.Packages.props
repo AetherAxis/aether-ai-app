@@ -1,0 +1,18 @@
+<Project>
+  <!-- ⑮ aether-ai-app：Avalonia 统一 UI（桌面 + Android + iOS）。
+       纪律：Avalonia 全家桶版本保持同步（12.1.4 一条线）；业务能力一律经 ProjectReference 组合，不复制实现。 -->
+  <ItemGroup>
+    <PackageVersion Include="Avalonia" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Android" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.iOS" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+    <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.1" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
+    <!-- markdown 渲染（与 monorepo 桌面端同款；Tight 变体无外部 HTML 依赖，移动端更稳） -->
+    <PackageVersion Include="Markdown.Avalonia.Tight" Version="12.0.0-a3" />
+    <PackageVersion Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.0.1.15" />
+  </ItemGroup>
+</Project>

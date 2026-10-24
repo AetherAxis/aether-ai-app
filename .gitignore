@@ -1,0 +1,23 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.log
+
+# macOS
+.DS_Store
+
+# 测试产物（dotnet test --collect:"XPlat Code Coverage" 落的覆盖率与 TestResults）
+TestResults/
+*.cobertura.xml
+coverage.*.xml
+
+# spike 本地数据
+*.db
+*.db-shm
+*.db-wal
+
+# Android / iOS 构建副产物
+*.keystore
+!debug.keystore
