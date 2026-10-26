@@ -253,7 +253,7 @@
             <StackPanel Spacing="12" HorizontalAlignment="Center" MaxWidth="380">
               <TextBlock Text="👋" FontSize="36" HorizontalAlignment="Center"/>
               <TextBlock Text="开始对话" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-              <TextBlock Text="选择一个 agent，输入你的问题。规则演示与审批演示无需模型 key；通用助手需先在设置里配置 LLM 档案（右上角齿轮）。"
+              <TextBlock Text="选择一个 agent，输入你的问题。规则演示与审批演示无需模型 key；通用助手需先在输入卡的「模型」下拉里配置 LLM 档案（末项「管理模型…」）。"
                          FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                          TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"/>
             </StackPanel>

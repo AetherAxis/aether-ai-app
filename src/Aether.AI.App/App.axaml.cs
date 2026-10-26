@@ -11,6 +11,7 @@ using Aether.Workbench;
 using Aether.Workbench.Abstractions;
 using Aether.Workbench.Theming;
 using Avalonia;
+using Avalonia.VisualTree;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -58,6 +59,7 @@ public partial class App : Application
             desktop.MainWindow = window;
             _ = shell.InitializeAsync();          // 恢复布局 + 激活工作台（不阻塞首帧）
             _ = provider.GetRequiredService<ChatViewModel>().InitializeAsync();
+            if (desktop.Args?.Contains("--dump-layout") == true) DumpLayoutAsync(window, desktop, shell);
         }
         else if (ApplicationLifetime is IActivityApplicationLifetime activity)
         {
@@ -137,6 +139,48 @@ public partial class App : Application
         }
     }
 
+    /// <summary>版式诊断（--dump-layout）：启动后按 1280x820 / 900x600 / 1792x997 三档窗口尺寸，
+    /// 逐 tab 把整棵视觉树的几何（窗口坐标 / 可见性 / 裁切）写进 %TEMP%/aether-layout-*.txt 后退出。
+    /// 截图只能看像素，转储能看清「谁在谁上面 / 谁超出父容器」——排查遮挡与裁切用。</summary>
+    private static async void DumpLayoutAsync(Window window, IClassicDesktopStyleApplicationLifetime desktop,
+        WorkbenchShellViewModel shell)
+    {
+        await Task.Delay(2500);
+        var tabs = new[] { "chat", "agents", "settings" };
+        foreach (var (w, h) in new[] { (1280.0, 820.0), (900.0, 600.0), (1792.0, 997.0) })
+        {
+            window.Width = w;
+            window.Height = h;
+            await Task.Delay(500);
+            for (int idx = 0; idx < tabs.Length; idx++)
+            {
+                if (shell.ActiveWorkspace is { } ws) ws.SelectedTabIndex = idx;
+                await Task.Delay(400);
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"# tab={tabs[idx]} window={window.ClientSize.Width}x{window.ClientSize.Height}");
+                void Walk(Avalonia.Visual v, int depth)
+                {
+                    var line = new string(' ', depth * 2) + v.GetType().Name;
+                    if (v is Control c)
+                    {
+                        var b = c.Bounds;
+                        var p = c.TranslatePoint(new Avalonia.Point(0, 0), window);
+                        line += $" name={c.Name ?? "-"} vis={c.IsVisible} local=({b.X:0.#},{b.Y:0.#},{b.Width:0.#}x{b.Height:0.#})"
+                              + $" win=({p?.X:0.#},{p?.Y:0.#}) clip={c.ClipToBounds}";
+                        if (c is TextBlock tb && !string.IsNullOrWhiteSpace(tb.Text)) line += $" text=\"{tb.Text}\"";
+                        else if (c is Button btn && btn.Content is string sc) line += $" content=\"{sc}\"";
+                    }
+                    sb.AppendLine(line);
+                    foreach (var child in v.GetVisualChildren()) Walk(child, depth + 1);
+                }
+                Walk(window, 0);
+                File.WriteAllText(Path.Combine(Path.GetTempPath(),
+                    $"aether-layout-{(int)w}x{(int)h}-{tabs[idx]}.txt"), sb.ToString());
+            }
+        }
+        desktop.Shutdown();
+    }
+
     /// <summary>组合 DI 容器。configure：测试注入口（最后执行——可覆盖任何默认注册，如假审批框/内联 dispatcher）。</summary>
     public static IServiceProvider BuildProvider(string? dataDirectory = null, Action<IServiceCollection>? configure = null)
     {
@@ -145,7 +189,7 @@ public partial class App : Application
 
         var services = new ServiceCollection();
 
-        // —— ⑩ 布局引擎：三 tab 工作台（chat / agents / settings）——
+        // —— ⑩ 布局引擎：工作台（nav rail = chat / agents；settings 走 rail 左下角齿轮入口）——
         services.AddSingleton<Aether.Workbench.IPreferencesStore>(
             new JsonPreferencesStore(Path.Combine(dataDir, "preferences.json")));
         services.AddWorkbench(DesktopWorkspace.Definition);

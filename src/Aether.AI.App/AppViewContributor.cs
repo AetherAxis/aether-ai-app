@@ -18,6 +18,8 @@ public sealed class AppViewContributor : IViewRegistryContributor
             () => new AgentsView(),
             () => null);
 
+        // 设置面板 = rail 底部齿轮直达的那一页（FooterPanelKey），只管外观（主题）+ 布局（重置）。
+        // LLM 档案走聊天输入卡的「模型 ⚙」→ LlmProfilesView（同一份 SettingsViewModel）——一处配置，不重复出现。
         registry.Register(PanelKeys.Settings,
             () => new SettingsView(),
             () => services.GetRequiredService<SettingsViewModel>());

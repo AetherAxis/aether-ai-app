@@ -16,13 +16,18 @@ public partial class ChatView : UserControl
 {
     private ToolApprovalRequest? _pendingRequest;
 
+    private ViewModels.ChatViewModel? _hookedVm;
+
     public ChatView()
     {
         InitializeComponent();
-        // 设置齿轮：仅移动形态显示（桌面走 ⑩ 工作台的设置 tab）。
+        // 设置齿轮：仅移动形态显示（桌面走 ⑩ 工作台 rail 左下角齿轮入口，FooterPanelKey=settings）。
         var isDesktop = Avalonia.Application.Current?.ApplicationLifetime
             is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
         SettingsGearButton.IsVisible = !isDesktop;
+        // 模型下拉的「管理模型…」项 → 打开配置窗（View/VM 分工：VM 只发意图，宿主决定形态）
+        DataContextChanged += (_, _) => HookModelManage();
+        HookModelManage();
         if (App.MobileApproval is { } broker)
         {
             broker.Requested += OnApprovalRequested;
@@ -30,24 +35,36 @@ public partial class ChatView : UserControl
         }
     }
 
-    // —— 设置浮层（移动形态）——
-
-    private void OnSettingsGear(object? sender, RoutedEventArgs e)
+    private void HookModelManage()
     {
-        // 同一份 SettingsView/SettingsViewModel（移动组合根解析）；首次打开时接 DataContext。
-        if (MobileSettingsView.DataContext is null && App.MobileProvider is { } provider)
-            MobileSettingsView.DataContext = provider.GetRequiredService<ViewModels.SettingsViewModel>();
-        SettingsOverlay.IsVisible = true;
+        if (_hookedVm is not null) _hookedVm.ManageLlmRequested -= OnManageLlmRequested;
+        _hookedVm = DataContext as ViewModels.ChatViewModel;
+        if (_hookedVm is not null) _hookedVm.ManageLlmRequested += OnManageLlmRequested;
+    }
+
+    /// <summary>下拉里选中「管理模型…」→ 开配置窗。延到下一帧：先让下拉浮层收起，再弹窗，避免抢焦点。</summary>
+    private void OnManageLlmRequested() => Dispatcher.UIThread.Post(ShowModelSettings);
+
+    // —— 模型设置浮层（移动形态）——
+
+    private void OnSettingsGear(object? sender, RoutedEventArgs e) => OpenModelOverlay();
+
+    private void OpenModelOverlay()
+    {
+        // 同一份 LlmProfilesView/SettingsViewModel（移动组合根解析）；首次打开时接 DataContext。
+        if (MobileLlmView.DataContext is null && App.MobileProvider is { } provider)
+            MobileLlmView.DataContext = provider.GetRequiredService<ViewModels.SettingsViewModel>();
+        ModelSettingsOverlay.IsVisible = true;
     }
 
     private void OnSettingsClose(object? sender, RoutedEventArgs e)
-        => SettingsOverlay.IsVisible = false;
+        => ModelSettingsOverlay.IsVisible = false;
 
-    // —— LLM 档案管理（输入卡「模型 ⚙」入口，2026-10-26——⑪ 连接档案同款范式）——
-    // 桌面 = 模态窗（复用设置页同一份 SettingsView/SettingsViewModel 单例，编辑即时落档、chips 随 Changed 刷新）；
-    // 移动 = 已有的设置浮层（同一入口语义）。
+    // —— LLM 档案管理（模型下拉的「管理模型…」项，2026-10-26）——
+    // 唯一的 LLM 配置面：桌面 = 模态窗，移动 = 内嵌浮层，两端宿同一份 LlmProfilesView + SettingsViewModel 单例
+    // （编辑即时落档、下拉里的档案列表随 Changed 刷新）。设置页（左下角齿轮）只管外观/布局，不放 LLM。
 
-    private void OnManageLlm(object? sender, RoutedEventArgs e)
+    private void ShowModelSettings()
     {
         if (Avalonia.Application.Current?.ApplicationLifetime
             is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
@@ -57,15 +74,16 @@ public partial class ChatView : UserControl
             if (vm is null || desktop.MainWindow is null) return;
             var dialog = new Avalonia.Controls.Window
             {
-                Title = "管理 LLM 档案",
-                Content = new SettingsView { DataContext = vm },
-                MinWidth = 520, MinHeight = 560,
+                Title = "模型设置",
+                Content = new LlmProfilesView { DataContext = vm },
+                // 760x680：够放「列表 + 表单」两段而不挤（旧 520x560 会把表单压出滚动条）。
+                Width = 760, Height = 680, MinWidth = 560, MinHeight = 520,
                 WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.CenterOwner,
             };
             _ = dialog.ShowDialog(desktop.MainWindow);
             return;
         }
-        OnSettingsGear(sender, e);   // 移动形态：复用设置浮层
+        OpenModelOverlay();   // 移动形态：内嵌浮层
     }
 
     // —— 审批 bottom sheet（移动形态） ——

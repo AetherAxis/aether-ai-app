@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Aether.AI.App.Core;
 using Aether.AI.Core.Agents;
+using Aether.Workbench;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,10 +50,15 @@ public partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(SaveButtonText));
     }
 
+    /// <summary>⑩ 工作台 shell——设置页的「外观」区（主题列表 + 重置布局）从这里取宿主能力。
+    /// 旧版这些在 rail 底部齿轮的 flyout 里；底部入口改成直达设置页后合并进来。null = 无工作台形态（隐藏外观区）。</summary>
+    public WorkbenchShellViewModel? Shell { get; }
+
     public SettingsViewModel(IServiceProvider serviceProvider)
     {
         _state = serviceProvider.GetRequiredService<LlmConfigState>();
         _runner = serviceProvider.GetRequiredService<IAgentRunner>();
+        Shell = serviceProvider.GetService<WorkbenchShellViewModel>();
         _state.Changed += () => Reload();
         Reload();
     }
@@ -77,6 +83,10 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     public bool HasConfigs => Configs.Count > 0;
+
+    /// <summary>状态行是否有内容（无内容时整行不占位——空 TextBlock 会白占一行高度）。</summary>
+    public bool HasStatus => !string.IsNullOrWhiteSpace(StatusText);
+    partial void OnStatusTextChanged(string value) => OnPropertyChanged(nameof(HasStatus));
 
     [RelayCommand]
     private void NewConfig()

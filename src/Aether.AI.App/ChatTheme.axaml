@@ -53,6 +53,20 @@
     <Setter Property="MinHeight" Value="26"/>
   </Style>
 
+  <!-- 选择器外壳（头部 agent 选择 / 输入卡上方的运行模式 + 模型 chips）：
+       **不要**套引擎的 Border.chip —— 那个样式写死 `Height=26`，而里面的 ComboBox.compact 本身 MinHeight=26、
+       再加内距就塞不进去，会被压成 18px，文字只剩 8px（“选项显示不全”的根因）；chip 按钮同理被压成 10px 字。
+       这里用 MinHeight + 自适应高度：只给底色/描边/圆角，纵向内距 0，让子控件按自身需要撑开。 -->
+  <Style Selector="Border.picker">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="6,0"/>
+    <Setter Property="MinHeight" Value="26"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
   <!-- 幽灵按钮（透明底、hover 才有背景） -->
   <Style Selector="Button.ghost">
     <Setter Property="Background" Value="Transparent"/>
@@ -77,6 +91,8 @@
   <Style Selector="Button.llm-chip.current">
     <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
     <Setter Property="FontWeight" Value="SemiBold"/>
+    <!-- 有边框的形态（设置页主题 chip）当前项描边；聊天输入卡里的无边框 chip 不受影响（BorderThickness=0）。 -->
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
   </Style>
 
   <!-- 主按钮（accent 填充） -->

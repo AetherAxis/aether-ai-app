@@ -66,9 +66,7 @@ public partial class ChatViewModel : ObservableObject
         _preferences = preferences;
         _llmState = serviceProvider.GetRequiredService<LlmConfigState>();
 
-        // LLM 档案 chips（⑪ 连接档案同款范式：配置在档案里，使用面只有动作）——
-        // 设置页/管理窗保存或切换后 Changed 即时刷新。
-        LlmProfiles.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasLlmProfiles));
+        // 模型下拉的档案列表：配置窗保存/切换后 Changed 即时刷新（重建式，列表小）。
         _llmState.Changed += RefreshLlmProfiles;
         RefreshLlmProfiles();
 
@@ -260,26 +258,53 @@ public partial class ChatViewModel : ObservableObject
 
     [ObservableProperty] private bool _hasConversations;
 
-    // —— LLM 档案 chips（输入卡上方的快速切换面；增删改走设置页/管理窗） ——
+    // —— 模型选择器（输入卡上方）：**选择与配置在同一处** ——
+    // 下拉列出全部 LLM 档案（选中即切换，下一轮生效），末项「管理模型…」打开配置窗（LlmProfilesView）。
+    // 2026-10-26 四改：原「每条档案一个 chip + 独立的『模型 ⚙』按钮」两个控件合并成这一个下拉。
 
-    public ObservableCollection<LlmProfileChip> LlmProfiles { get; } = new();
+    public ObservableCollection<LlmProfileChip> LlmPickerItems { get; } = new();
 
-    public bool HasLlmProfiles => LlmProfiles.Count > 0;
+    private LlmProfileChip? _selectedLlm;
+    public LlmProfileChip? SelectedLlm
+    {
+        get => _selectedLlm;
+        set
+        {
+            if (ReferenceEquals(_selectedLlm, value)) return;
+            if (value is { IsManage: true })
+            {
+                // 哨兵项不参与选择：把值弹回原档案（下拉里不显示「管理模型…」），再请宿主开配置窗。
+                _selectedLlm = null;
+                OnPropertyChanged(nameof(SelectedLlm));
+                _selectedLlm = LlmPickerItems.FirstOrDefault(i => i.IsCurrent);
+                OnPropertyChanged(nameof(SelectedLlm));
+                ManageLlmRequested?.Invoke();
+                return;
+            }
+            _selectedLlm = value;
+            OnPropertyChanged(nameof(SelectedLlm));
+            if (value is not null && value.Name != _llmState.SelectedName)
+            {
+                _llmState.Select(value.Name);
+                _agentRunner.Invalidate("assistant");   // 下一轮对话生效（与配置窗同一条路）
+            }
+        }
+    }
+
+    /// <summary>「管理模型…」被选中 → 宿主（ChatView）打开配置窗/浮层。</summary>
+    public event Action? ManageLlmRequested;
+
+    public bool HasLlmProfiles => _llmState.Configs.Count > 0;
 
     private void RefreshLlmProfiles()
     {
-        LlmProfiles.Clear();
+        LlmPickerItems.Clear();
         foreach (var c in _llmState.Configs)
-            LlmProfiles.Add(new LlmProfileChip(c.Name, c.ModelId, c.Name == _llmState.SelectedName));
-    }
-
-    /// <summary>点档案 chip = 切换当前模型（state.Select + agent 失效，下一轮对话生效——与设置页同一条路）。</summary>
-    [RelayCommand]
-    private void SelectLlm(LlmProfileChip? chip)
-    {
-        if (chip is null) return;
-        _llmState.Select(chip.Name);
-        _agentRunner.Invalidate("assistant");
+            LlmPickerItems.Add(new LlmProfileChip(c.Name, c.ModelId, c.Name == _llmState.SelectedName));
+        LlmPickerItems.Add(LlmProfileChip.Manage);
+        _selectedLlm = LlmPickerItems.FirstOrDefault(i => i.IsCurrent);
+        OnPropertyChanged(nameof(SelectedLlm));
+        OnPropertyChanged(nameof(HasLlmProfiles));
     }
 
     [RelayCommand]
@@ -574,5 +599,9 @@ public partial class ChatViewModel : ObservableObject
     }
 }
 
-/// <summary>LLM 档案 chip（输入卡上方的快速切换行）——重建式刷新（列表小，无需逐项 INPC）。</summary>
-public sealed record LlmProfileChip(string Name, string ModelId, bool IsCurrent);
+/// <summary>模型下拉的一项（输入卡上方的模型选择器）——重建式刷新（列表小，无需逐项 INPC）。
+/// <paramref name="IsManage"/> = 末项哨兵「管理模型…」：选中它不开档案切换，只打开配置窗。</summary>
+public sealed record LlmProfileChip(string Name, string ModelId, bool IsCurrent, bool IsManage = false)
+{
+    public static readonly LlmProfileChip Manage = new("管理模型…", string.Empty, IsCurrent: false, IsManage: true);
+}

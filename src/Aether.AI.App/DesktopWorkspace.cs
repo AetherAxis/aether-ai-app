@@ -10,8 +10,9 @@ public static class PanelKeys
     public const string Settings = "settings";
 }
 
-/// <summary>App 的默认工作台：聊天 / Agents / 设置 三 tab。M1 = chat 实装，
-/// agents（目录+编辑器）M2、settings（LLM 档案/主题）M2——先占位保证导航形态稳定。</summary>
+/// <summary>App 的默认工作台：nav rail = 聊天 / Agents 两项，设置走 rail 底部齿轮入口
+/// （<see cref="WorkspaceDefinition.FooterPanelKey"/>——设置页自身承载主题/重置布局，
+/// 与旧版底部 flyout 合并成同一个入口）。M1 = chat 实装，agents（目录+编辑器）M2。</summary>
 public static class DesktopWorkspace
 {
     public static WorkspaceDefinition Definition { get; } = new(
@@ -23,5 +24,6 @@ public static class DesktopWorkspace
             new(PanelKeys.Agents, PanelKeys.Agents, "Agents", "agents"),
             new(PanelKeys.Settings, PanelKeys.Settings, "设置", "settings"),
         },
-        Layout: new LayoutTabbed(new[] { PanelKeys.Chat, PanelKeys.Agents, PanelKeys.Settings }));
+        Layout: new LayoutTabbed(new[] { PanelKeys.Chat, PanelKeys.Agents, PanelKeys.Settings }),
+        FooterPanelKey: PanelKeys.Settings);
 }
