@@ -84,6 +84,7 @@ public static class LlmConfigStore
         {
             if (File.Exists(path))
             {
+                Protect(path);   // 自愈：旧版写的默认权限（644）也收紧到 0600
                 var file = JsonSerializer.Deserialize<LlmConfigFile>(File.ReadAllText(path));
                 if (file?.Configs is { Count: > 0 })
                     return (file.Configs, file.Selected ?? file.Configs[0].Name);
@@ -100,7 +101,19 @@ public static class LlmConfigStore
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, JsonSerializer.Serialize(new LlmConfigFile(configs.ToList(), selected),
                 new JsonSerializerOptions { WriteIndented = true }));
+            Protect(path);
         }
         catch { /* 磁盘失败不阻断（best-effort） */ }
+    }
+
+    /// <summary>
+    /// 密钥文件 0600（2026-10-26，对齐 ⑦ 凭据仓纪律）：文件含 API Key，仅属主可读写——
+    /// llm-configs.json 与 CTP 的 ctp.db 同属凭据存放，不再用默认 644。Windows 无 Unix 文件模式（走 ACL），不动。
+    /// </summary>
+    private static void Protect(string path)
+    {
+        if (OperatingSystem.IsWindows()) return;
+        try { File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite); }
+        catch { /* best-effort——同落盘吞异常语义 */ }
     }
 }

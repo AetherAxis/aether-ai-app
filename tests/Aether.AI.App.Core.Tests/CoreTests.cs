@@ -332,3 +332,34 @@ public class TranscriptRoundtripTests : IDisposable
         Assert.True(rt.IsDone);
     }
 }
+
+// —— LLM 档案凭据文件权限（2026-10-26，对齐 ⑦ 凭据仓纪律）——
+
+public class LlmConfigStorePermissionTests
+{
+    [Fact]
+    public void 保存的密钥文件为0600()
+    {
+        if (OperatingSystem.IsWindows()) return;   // Windows 走 ACL，无 Unix 文件模式
+        var path = Path.Combine(Path.GetTempPath(), $"llm-configs-{Guid.NewGuid():N}.json");
+
+        LlmConfigStore.Save(path, new[] { new LlmConfig("deepseek", null, "sk-xxx", "deepseek-chat") }, "deepseek");
+
+        var mode = File.GetUnixFileMode(path);
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, mode);
+    }
+
+    [Fact]
+    public void 加载时自愈旧文件的过宽权限()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var path = Path.Combine(Path.GetTempPath(), $"llm-configs-{Guid.NewGuid():N}.json");
+        LlmConfigStore.Save(path, new[] { new LlmConfig("a", null, "k", "m") }, "a");
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite
+            | UnixFileMode.GroupRead | UnixFileMode.OtherRead);   // 模拟旧版写的 644
+
+        LlmConfigStore.Load(path);
+
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+    }
+}

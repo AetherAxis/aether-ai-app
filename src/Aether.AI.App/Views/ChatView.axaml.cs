@@ -43,6 +43,31 @@ public partial class ChatView : UserControl
     private void OnSettingsClose(object? sender, RoutedEventArgs e)
         => SettingsOverlay.IsVisible = false;
 
+    // —— LLM 档案管理（输入卡「模型 ⚙」入口，2026-10-26——⑪ 连接档案同款范式）——
+    // 桌面 = 模态窗（复用设置页同一份 SettingsView/SettingsViewModel 单例，编辑即时落档、chips 随 Changed 刷新）；
+    // 移动 = 已有的设置浮层（同一入口语义）。
+
+    private void OnManageLlm(object? sender, RoutedEventArgs e)
+    {
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            var vm = Aether.Workbench.WorkbenchServices.GetService<ViewModels.SettingsViewModel>()
+                ?? App.MobileProvider?.GetRequiredService<ViewModels.SettingsViewModel>();
+            if (vm is null || desktop.MainWindow is null) return;
+            var dialog = new Avalonia.Controls.Window
+            {
+                Title = "管理 LLM 档案",
+                Content = new SettingsView { DataContext = vm },
+                MinWidth = 520, MinHeight = 560,
+                WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.CenterOwner,
+            };
+            _ = dialog.ShowDialog(desktop.MainWindow);
+            return;
+        }
+        OnSettingsGear(sender, e);   // 移动形态：复用设置浮层
+    }
+
     // —— 审批 bottom sheet（移动形态） ——
 
     private void OnApprovalRequested(ToolApprovalRequest request)

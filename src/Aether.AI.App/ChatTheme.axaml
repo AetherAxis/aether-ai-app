@@ -63,6 +63,22 @@
     <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}"/>
   </Style>
 
+  <!-- LLM 档案 chip（输入卡上方的模型快速切换行）：幽灵形 + 当前档案 accent 高亮 -->
+  <Style Selector="Button.llm-chip">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="8,3"/>
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="CornerRadius" Value="4"/>
+  </Style>
+  <Style Selector="Button.llm-chip:pointerover">
+    <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}"/>
+  </Style>
+  <Style Selector="Button.llm-chip.current">
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+
   <!-- 主按钮（accent 填充） -->
   <Style Selector="Button.primary">
     <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>

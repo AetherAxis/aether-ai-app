@@ -53,6 +53,9 @@ tests/…Core.Tests/          8 例：引擎分段/审批卡状态迁移/取消�
 LLM 大脑凭设置页管理（OpenAI-compatible 档案 CRUD + 测试连接 + **切换免重启**——M2-lite，2026-10-24 实装）：
 宿主自注册 `IChatClientFactory`（⑫ 兼容缝）+ `LlmConfigState` 动态选中 → `AppLlmClientFactory` 清缓存 +
 `runner.Invalidate("assistant")` → 设置页切档案下一轮对话即换模型；「通用助手」agent 随档案存亡动态出现在目录。
+**2026-10-26 对齐 ⑪ 连接档案范式**：① 聊天输入卡上方加**模型 chips 快速切换行 + 「模型 ⚙」管理入口**
+（桌面 = 模态窗复用同一份 SettingsView/单例，移动 = 已有设置浮层——点 chip 即换模型，下一轮生效）；
+② **密钥文件 0600**（llm-configs.json 含 API Key，对齐 ⑦ 凭据仓纪律——保存即收紧，旧文件加载时自愈）。
 
 ### 移动端（方案A 实证，2026-10-24）
 

@@ -39,6 +39,7 @@ public partial class ChatViewModel : ObservableObject
     private readonly ChatTranscriptPersister _persister;
     private readonly ConversationHistoryLoader _historyLoader;
     private readonly Aether.Workbench.IPreferencesStore _preferences;
+    private readonly LlmConfigState _llmState;
 
     // —— 多会话并发：每会话独立 runtime，背景 run 往自己的 Messages 追加，切会话只换 _current 不取消 ——
     private readonly ConcurrentDictionary<Guid, ConversationRuntime> _runtimes = new();
@@ -63,6 +64,13 @@ public partial class ChatViewModel : ObservableObject
         _persister = serviceProvider.GetRequiredService<ChatTranscriptPersister>();
         _historyLoader = serviceProvider.GetRequiredService<ConversationHistoryLoader>();
         _preferences = preferences;
+        _llmState = serviceProvider.GetRequiredService<LlmConfigState>();
+
+        // LLM 档案 chips（⑪ 连接档案同款范式：配置在档案里，使用面只有动作）——
+        // 设置页/管理窗保存或切换后 Changed 即时刷新。
+        LlmProfiles.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasLlmProfiles));
+        _llmState.Changed += RefreshLlmProfiles;
+        RefreshLlmProfiles();
 
         // 流式渲染引擎：审批/计划快照全在引擎内。模式/模式支持逐工具实时读（运行中切档立即生效）；
         // isCurrentRuntime 决定背景会话计划变更是否上抛 PlanSummary。
@@ -251,6 +259,28 @@ public partial class ChatViewModel : ObservableObject
     public ObservableCollection<ConversationItem> Conversations { get; } = new();
 
     [ObservableProperty] private bool _hasConversations;
+
+    // —— LLM 档案 chips（输入卡上方的快速切换面；增删改走设置页/管理窗） ——
+
+    public ObservableCollection<LlmProfileChip> LlmProfiles { get; } = new();
+
+    public bool HasLlmProfiles => LlmProfiles.Count > 0;
+
+    private void RefreshLlmProfiles()
+    {
+        LlmProfiles.Clear();
+        foreach (var c in _llmState.Configs)
+            LlmProfiles.Add(new LlmProfileChip(c.Name, c.ModelId, c.Name == _llmState.SelectedName));
+    }
+
+    /// <summary>点档案 chip = 切换当前模型（state.Select + agent 失效，下一轮对话生效——与设置页同一条路）。</summary>
+    [RelayCommand]
+    private void SelectLlm(LlmProfileChip? chip)
+    {
+        if (chip is null) return;
+        _llmState.Select(chip.Name);
+        _agentRunner.Invalidate("assistant");
+    }
 
     [RelayCommand]
     private void NewChat()
@@ -543,3 +573,6 @@ public partial class ChatViewModel : ObservableObject
         return take;
     }
 }
+
+/// <summary>LLM 档案 chip（输入卡上方的快速切换行）——重建式刷新（列表小，无需逐项 INPC）。</summary>
+public sealed record LlmProfileChip(string Name, string ModelId, bool IsCurrent);
