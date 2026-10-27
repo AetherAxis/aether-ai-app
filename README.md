@@ -1,16 +1,90 @@
-# Aether.AI.App（M0 spike 阶段）
+# Aether.AI.App
 
 ⑫ `aether-ai`（MAF 多大脑运行时）的统一 UI App——**方案A：Avalonia 单代码库，桌面 + Android + iOS**。
 一套 AXAML / ViewModel / Core，按平台调整主题、控件尺寸、手势与 safe-area。
 
-> 本仓当前处于 **M0 spike**：验证方案A 的六项硬前提（见下）。`spike/` 是可丢原型——
-> M0 通过后按正式结构落 `src/`（App.Core 无 UI 引擎 + App 多 TFM + tests），届时重写本 README。
+**当前状态（2026-10-27）**：M0 方案A 六项硬前提全过 → M1 桌面聊天 MVP → M2-lite 自定义大脑（LLM/规则/代码）
+→ M2-tools ⑭ 工具接入 → M2-caps 技能包 + 连接器 → M2-memory 记忆开关 → M2-wallet 链上钱包两端可用。正式结构在 `src/`
+（App.Core 无 UI 引擎 + App 共享 UI + `.Desktop`/`.Android`/`.iOS` 三个 head + `tests/`）；
+`spike/` 是 M0 期的可丢原型，仅留作历史证据。
+**先看下节「平台能力对照」**——手机端与桌面端能做什么、差在哪，一张表说清。
 
 ## 依赖（DAG：App 消费者层，与 ⑪ 同层）
 
 - ⑩ `aether-workbench`——桌面壳/主题引擎/布局（spike 仅验证移动 TFM 可引用 + 主题清单可加载）
 - ⑫ `aether-ai`——Hosting + Brains.Rule + Memory.Sqlite（**移动端闭包不带 Roslyn/FCS/LLM SDK 之外的重物**）
-- ⑭ `aether-ai-integrations`——系统工具 15 个（手机桌面共享，命令类仅桌面）+ 链上钱包 4 个（桌面 head 经 `App.HeadToolsConfigure` 独占接线，移动闭包不引 NSec）；**⑬ `aether-knowledge` 已于 2026-10-27 归档**
+- ⑭ `aether-ai-integrations`——系统工具 15 个 + 链上钱包 4 个（**都手机桌面共享**：钱包是纯客户端，节点地址读 `<dataDir>/ledger.json`；命令类仅桌面）；**⑬ `aether-knowledge` 已于 2026-10-27 归档**
+
+## 平台能力对照：手机端 / 桌面端（2026-10-27 实测口径）
+
+**同一份代码、同一条注册路径**，差别只在「这台机器跑不跑得了」。判定集中在一处：`App.HeadHost`
+（head 显式声明）→ ⑫ `AetherAIOptions.Host` + `ToolRegistry` 的 `HostCapability`；工具 UI 与服务端口径一致。
+
+### 一、agent 大脑
+
+| 功能 | 手机 | 桌面 | 为什么 / 手机上的表现 |
+|---|:--:|:--:|---|
+| LLM 大脑（系统提示词 + 工具集 + 4 档模式 + 审批） | ✅ | ✅ | 纯网络 + 进程内，无平台依赖 |
+| 规则大脑（正则 → 调工具/模板回复，进程内执行） | ✅ | ✅ | 零编译、零 key，两端同一份 `RuleProgram` |
+| **代码大脑（写 C# 源码，本机编译后执行）** | ❌ | ✅ | Roslyn 编译器**只在桌面 head 注册**（`AddCSharpBrainCompilation` 走 `App.ServicesConfigure`），移动包不背 Roslyn/FCS。手机上选中代码 agent 会明确报「未注册 C# 编译器」，不是静默无响应 |
+
+### 二、工具（⑭ 适配器）
+
+| 功能 | 手机 | 桌面 | 为什么 / 手机上的表现 |
+|---|:--:|:--:|---|
+| 文件类：ReadFile / WriteFile / EditFile / LineEditFile / DeleteFile / MoveFile | ⚠️ | ✅ | 工具本身可用，但**只能碰 App 沙箱内路径**（iOS 容器外的绝对路径读不到也写不了） |
+| 检索与批处理：Grep / Glob / ExploreDirectory / DiffFile / ApplyPatch / ApplyPatchWithDelete | ✅ | ✅ | 同上：纯托管 + 文件 IO，沙箱内正常 |
+| FetchUrl（抓网页/PDF） | ✅ | ✅ | 纯 HTTP |
+| **ExecuteCommand / ExecuteShellCommand（起子进程）** | ❌ | ✅ | iOS 沙盒禁止 fork。手机端**连注册都不发生**（`includeCommandTools:false`），编辑页的工具列表里也没有它们 |
+| **链上钱包 4 个（LedgerGetInfo / GetBalance / Transfer / DepositToExchange）** | ✅ | ✅ | **纯客户端**（RPC + 本地签名），节点地址由配置给：`<dataDir>/ledger.json` &gt; `AETHER_LEDGER_NODE_ADDR` &gt; 开发默认 `127.0.0.1:17805`。手机端在「模型设置 → 能力」里填服务端节点。签名库 2026-10-27 已从 NSec（libsodium 原生）换成纯托管 BouncyCastle Ed25519——**签名字节逐字节不变**（① `LedgerEd25519ParityTests` 对照回归），iOS 链接失败问题随之消失，三 TFM 均构建+链接通过 |
+| Echo（演示/回显） | ✅ | ✅ | 两端都在，用于审批演示与冒烟 |
+
+### 三、技能包与连接器
+
+| 功能 | 手机 | 桌面 | 为什么 / 手机上的表现 |
+|---|:--:|:--:|---|
+| 技能包正文（`skills/<name>/SKILL.md`，按需 load 进上下文） | ✅ | ✅ | 提示词级知识，两端同一份目录、同一个解析器 |
+| **技能脚本 `run_skill_script`（.py / .sh / .js）** | ❌ | ✅ | `AetherAIOptions.EnableSkillScripts` 桌面为 true、手机 false → 手机上调脚本返回一条明确说明（「当前宿主不支持执行 skill 脚本，请只依据 SKILL.md 推理」），不假装成功 |
+| 连接器 HTTP / SSE（MCP 远端服务） | ✅ | ✅ | 连接器是远端服务，手机与桌面同源 |
+| **连接器 stdio（`command`+`args` 起本地子进程）** | ❌ | ✅ | 手机端**连连接尝试都不发生**（`AddMcpServersFromDirectory` 的宿主过滤），配置 JSON 原样留盘给桌面用 |
+
+### 四、记忆
+
+| 功能 | 手机 | 桌面 | 说明 |
+|---|:--:|:--:|---|
+| 会话内历史（滑动窗口 / SQLite 落盘重建） | ✅ | ✅ | SQLite native 在移动 TFM 已验证可载入 |
+| 长期记忆 `EnableLongTermMemory`（召回 + 沉淀） | ✅ | ✅ | 落 `<dataDir>/memory.db`；换端同步同一份档案可接着用 |
+| 工作笔记 `EnableFileMemory`（agent 自建笔记） | ✅ | ✅ | 落 `<dataDir>/agent-notes/<agentId>/`，沙箱内可写 |
+
+### 五、界面形态（同一份 View/VM，两套壳）
+
+| 功能 | 手机 | 桌面 | 说明 |
+|---|:--:|:--:|---|
+| 聊天：多会话、分段流、思考卡/工具卡/计划卡、markdown | ✅ | ✅ | 同一份 `ChatView` / `ChatViewModel` |
+| 工具审批 | ✅ bottom sheet | ✅ 模态对话框 | 同一个 `IApprovalDialogService` 端口的两种实现 |
+| agent 管理（增删改、三类大脑、记忆开关） | ✅ 内嵌浮层 | ✅ 880×860 模态窗 | 同一份 `AgentsView` |
+| 模型档案管理（CRUD + 测试连接 + 切换免重启） | ✅ 内嵌浮层 | ✅ 模态窗 | 同一份 `LlmProfilesView` |
+| **设置页**（外观主题 / 重置布局） | ❌ | ✅ | 设置页挂在 ⑩ 工作台的 nav rail 齿轮上；移动形态没有 nav rail（移动壳属 M3）。**但其「能力」内容手机可达**：`CapabilitiesView`（技能包 / 连接器 / 链上钱包）已挂到手机「模型设置」浮层的「能力」页签 |
+| 布局持久化、分隔条、多 tab | ❌ | ✅ | 桌面壳专属；移动是单视图全屏 |
+| 主题 | 固定浅色 overlay | 4 套主题可切 | 移动端 `ThemeLoader.Apply` 直接叠在根视图上 |
+
+### 六、开发 / 诊断入口（只有桌面 head 有命令行）
+
+| 入口 | 手机 | 桌面 |
+|---|:--:|:--:|
+| `--smoke`（规则全链路 + 审批自恢复） | ❌ | ✅ |
+| `--llm-smoke`（真模型一轮流式对话） | ❌ | ✅ |
+| `--tools`（当前宿主可用工具清单） | ❌ | ✅ |
+| `--dump-layout`（版式几何转储）、Avalonia DeveloperTools | ❌ | ✅ |
+
+### 已知未验证 / 待补
+
+- iOS **真机 AOT** 未验证（模拟器已验证）；Android edge-to-edge 与软键盘行为待 M3。
+- **链上钱包真机验收未做**：接线与构建已通（三 TFM），但还没在真机/模拟器上连过真实服务端节点做一轮余额+转账；
+  另缺「服务端节点地址下发」（现在靠用户手填，未来应由账号/环境自动带下来）。
+- 移动壳（Page 族导航 / 底部 tab / 完整设置页）属 M3——上面「设置页 ❌」就是这条的直接体现；
+  其中能力面（技能包/连接器/钱包）已通过「模型设置 → 能力」页签在手机可达，外观/布局仍是桌面专属。
+- 手机端文件类工具的实际可用范围以沙箱为界，还没做「用户可见的目录选择器」。
 
 ## M0 验证清单（2026-10-24 全部通过 ✅）
 
@@ -140,7 +214,7 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 |---|---|---|---|
 | 系统工具（15） | ReadFile / WriteFile / EditFile / LineEditFile / DeleteFile / MoveFile / Grep / Glob / ExploreDirectory / DiffFile / ApplyPatch / ApplyPatchWithDelete / FetchUrl | ⑭ `AddSystemTools` | 两端通用 |
 | 系统工具·命令类（2） | ExecuteCommand / ExecuteShellCommand | 同上 | **仅桌面**（iOS 沙盒禁止 fork） |
-| 链上钱包（4） | LedgerGetInfo / LedgerGetBalance / LedgerTransfer(Dangerous) / LedgerDepositToExchange(Confirm) | ⑭ `AddLedgerTools` | **仅桌面**（NSec 原生库） |
+| 链上钱包（4） | LedgerGetInfo / LedgerGetBalance / LedgerTransfer(Dangerous) / LedgerDepositToExchange(Confirm) | ⑭ `AddLedgerTools` | 两端通用（节点地址来自 `<dataDir>/ledger.json`） |
 
 **一体化设计（关键：手机桌面同一个 App、同一份注册代码）**
 
@@ -149,15 +223,16 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 - 宿主由 head **显式声明**：`App.HeadHost`（桌面 `DesktopOnly` / 移动 `MobileOnly`），未声明才按 Avalonia lifetime 推断
   —— 无头路径（`--smoke`/`--tools`/CI）里 Avalonia 还没起来，靠推断会一律落到「手机」。声明值同时喂给
   ⑫ `AetherAIOptions.Host`，`ToolRegistry.ResolveAll` 在运行期按 `HostCapability` 兜底跳过不匹配的工具。
-- 需要桌面宿主的**额外**能力走 head 钩子 `App.HeadToolsConfigure`（与 `ServicesConfigure` 同款分工）：
-  桌面 head 用它 `AddLedgerTools(...)`，**移动 head 不设** ⇒ 移动闭包不引 ① aether-ledger，NSec 原生库不进 iOS/Android 包。
-  ⑭ SystemTools 本身是纯托管代码（只依赖 ⑫ Hosting + Microsoft.Extensions.Http），可以安心进移动闭包。
+- 需要桌面宿主的**额外**能力走 head 钩子 `App.HeadToolsConfigure`（与 `ServicesConfigure` 同款分工）。
+  目前**没有消费者**：链上钱包已从 head 钩子移到共享组合根（钱包是客户端，等价能力两端都该有，见 M2-wallet 一节）。
+  ⑭ SystemTools / Ledger.AI 都是纯托管代码，可以安心进移动闭包。
 - UI 与服务端口径一致：agent 编辑页的工具勾选列表改用 `ToolRegistry.GetUsableMetas()`（新增，过滤口径与
   `ResolveAll` 逐条相同）——手机上不会出现「执行命令」，桌面上也不会有手机专属工具。
 
-**验收**：`--tools` 打印当前宿主可用工具清单（桌面 20 个 = 系统 15 + 钱包 4 + Echo；手机 14 个 = 系统 13 + Echo）；
-`tests/…App.Tests/AppToolWiringTests.cs` 5 例覆盖：手机宿主不含命令工具（且未注册）、桌面专属工具「注册但不可勾选且 ResolveAll 跳过」、
-head 钩子决定钱包类工具是否进表、以及**真解析 ReadFile 真读文件**。桌面 head / Android / iOS 三个 TFM 均编译通过。
+**验收**：`--tools` 打印当前宿主可用工具清单（桌面 20 个 = 系统 15 + 钱包 4 + Echo；手机 18 个 = 系统 13 + 钱包 4 + Echo）；
+`tests/…App.Tests/AppToolWiringTests.cs` 7 例覆盖：手机宿主不含命令工具（且未注册）、桌面专属工具「注册但不可勾选且 ResolveAll 跳过」、
+head 钩子语义、**钱包四工具两端都有且审批等级随行**、钱包配置/种子文件落数据目录、以及**真解析 ReadFile 真读文件**。
+桌面 head / Android / iOS 三个 TFM 均编译通过（iOS 链接也已通过）。
 
 ### M2-caps（2026-10-27）：技能包 + 连接器（手机桌面一体）
 
@@ -180,8 +255,10 @@ head 钩子决定钱包类工具是否进表、以及**真解析 ReadFile 真读
   `AiCapabilityPaths`（`skills/` + `mcp-servers/`，`EnsureDirectories` 幂等建目录）。
 - App 启动后台连一次 MCP（`IMcpManagementService.EnsureStartedAsync`，不阻塞首帧）；连上的工具自动进
   `ToolRegistry`，agent 编辑页的勾选列表立刻能看到（MCP 工具默认 `Dangerous` 审批等级）。
-- **设置页新增「技能包与连接器」卡片**：本机能力一句话说明（桌面=脚本+stdio 可用 / 手机=正文+HTTP）、
-  两个目录路径、已加载技能包列表、连接器状态（已连接/失败原因/工具数）+ 刷新（技能重扫盘、连接器重连）。
+- **能力面抽成 `CapabilitiesView`（一份 XAML 两处宿主）**：桌面 = 设置页；手机 = 「模型设置」浮层的「能力」页签
+  （手机没有 nav rail，这一步让能力面在手机上真正可达）。内容：本机能力一句话说明（桌面=脚本+stdio 可用 / 手机=正文+HTTP）、
+  两个目录路径、已加载技能包列表、连接器状态（已连接/失败原因/工具数）+ 刷新（技能重扫盘、连接器重连）；
+  同批加入「链上钱包」卡片（节点地址 / 托管地址 / 生效值来源 / 配置文件与种子文件路径，见 M2-wallet）。
 - 单测 `AiCapabilitiesTests` 7 例：目录派生、技能两端都加载、脚本开关按宿主、HTTP/stdio 取舍、
   **手机端注册表只剩 HTTP（stdio 不连）**、设置页连接器状态映射。
 
@@ -200,6 +277,26 @@ LLM 大脑下多了「记忆」区两个开关，列表行出现「记忆」标�
 - 单测 `MemoryToggleTests` 4 例：根目录落在数据目录、开关双向映射（含编辑一次不丢）、管理窗勾选→落盘→
   读回为 true 且行上有标记、聊天目录里的定义带开关。
 
+### M2-wallet（2026-10-27）：链上钱包两端可用（换加密库 + 共享接线 + 配置入口）
+
+用户指出的原判断有误：钱包**本来就是客户端**，节点地址一直可配（`AETHER_LEDGER_NODE_ADDR`），
+`127.0.0.1:17805` 只是开发默认值——「节点指向本地所以手机不行」不成立。真实障碍只有一个：
+**签名库**。三件事一次做完：
+
+| # | 改动 | 位置 | 结果 |
+|---|---|---|---|
+| 1 | 签名实现 NSec（libsodium 原生）→ **纯托管 BouncyCastle Ed25519** | ① `LedgerKeys.cs`（唯一改动点） | iOS 链接不再缺 Aegis 符号；Ed25519 是确定性签名 ⇒ **签名字节逐字节不变**，历史链数据/已签交易零迁移 |
+| 2 | `AddLedgerTools(seedPath, nodeAddress, custodyAddress)` 参数化 + 移到 ⑮ 共享组合根 | ⑭ → ⑮ `BuildProvider` | 手机桌面同一份注册代码，不再有「桌面独家接线」 |
+| 3 | 节点地址配置入口 `<dataDir>/ledger.json`（优先级 文件 &gt; env &gt; 默认） | ⑮ `LedgerSettings` + 设置面「链上钱包」卡片 | 手机端终于有地方填服务端节点（手机设不了 env）；桌面填 `127.0.0.1:17805` 即本机节点 |
+
+- 钱包种子文件 `<dataDir>/wallet.seed`：**两端同一路径**（换端搬数据目录 = 续用同一个钱包）；
+  首次签名自动生成，建完立刻 `0600`（明文私钥 = 全部财富）。
+- 设置面 `CapabilitiesView` 一份 XAML 两处宿主：桌面设置页 + 手机「模型设置 → 能力」页签。
+- 回归：① `LedgerEd25519ParityTests` 12 例（公钥/地址/签名与 NSec **逐字节对照**，含 RFC 8032 向量、
+  空消息/长消息/真实交易载荷、失败路径不崩）；⑭ `LedgerNodeConfigTests` 9 例（优先级、地址写法宽容、0600）；
+  ⑮ `LedgerSettingsTests` 8 例 + 钱包接线 3 例（两端都有四工具、审批等级、配置落数据目录）。
+- 验收：`--tools` 桌面 20 个（含钱包 4）；**iOS 链接通过**（此前失败）；Android / Desktop 构建通过。
+
 ### 移动端（方案A 实证，2026-10-24）
 
 同一份 ChatView/ChatViewModel/Core 直跑 iOS 与 Android（`src/Aether.AI.App.{iOS,Android}` head）：
@@ -217,7 +314,7 @@ LLM 大脑下多了「记忆」区两个开关，列表行出现「记忆」标�
 
 ```bash
 dotnet build src/Aether.AI.App.Desktop -c Debug    # 桌面链（Core+App+⑩⑫ 传递）
-dotnet test tests/Aether.AI.App.Core.Tests         # 8 例
+dotnet test tests/Aether.AI.App.Tests              # 58 例（含工具接线 / 能力 / 记忆 / 钱包配置）
 dotnet run --project src/Aether.AI.App.Desktop     # GUI
 dotnet run --project src/Aether.AI.App.Desktop -- --smoke       # 规则全链路 + 审批自恢复（exit 0 = L2 无 GUI 等价）
 dotnet run --project src/Aether.AI.App.Desktop -- --llm-smoke    # LLM 真模型冒烟（需已配置档案；无档案 SKIP）

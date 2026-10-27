@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wb="using:Aether.Workbench"
+             xmlns:views="using:Aether.AI.App.Views"
              x:Class="Aether.AI.App.Views.SettingsView"
              Background="{DynamicResource ContentBgBrush}">
 
@@ -14,7 +15,7 @@
         <!-- ═══ 页头 ═══ -->
         <StackPanel Spacing="4">
           <TextBlock Text="设置" FontSize="20" FontWeight="SemiBold"/>
-          <TextBlock Text="外观与布局——改动即时生效并持久化到本机。模型与密钥在聊天输入卡的「模型 ⚙」里管理。"
+          <TextBlock Text="外观与布局、技能包与连接器、链上钱包——改动即时生效并持久化到本机。模型与密钥在聊天输入卡的「模型 ⚙」里管理。"
                      FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
         </StackPanel>
 
@@ -60,80 +61,8 @@
             </Button>
           </StackPanel>
         </Border>
-        <!-- ═══ 技能包与连接器（手机桌面同一份目录布局；本机跑不了的就明说，不静默降级）═══ -->
-        <Border Classes="msg-card" Padding="20,18" CornerRadius="14" IsVisible="{Binding HasCapabilities}">
-          <StackPanel Spacing="14">
-            <Grid ColumnDefinitions="*,Auto">
-              <StackPanel Spacing="3">
-                <TextBlock Text="技能包与连接器" FontSize="14" FontWeight="SemiBold"/>
-                <TextBlock Text="{Binding HostCapabilityText}"
-                           FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
-              </StackPanel>
-              <Button Grid.Column="1" Classes="outline" Padding="10,6" VerticalAlignment="Top"
-                      Command="{Binding RefreshCapabilitiesCommand}">
-                <TextBlock Text="刷新" FontSize="12" VerticalAlignment="Center"/>
-              </Button>
-            </Grid>
-
-            <!-- 目录：把 SKILL.md / mcp 配置放进去即生效（与桌面同一份路径结构，可跨端同步） -->
-            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="10" Padding="12,10">
-              <StackPanel Spacing="6">
-                <TextBlock Text="技能包目录" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                <SelectableTextBlock Text="{Binding SkillsDirectory}" FontSize="11" TextWrapping="Wrap"/>
-                <TextBlock Text="连接器目录" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                <SelectableTextBlock Text="{Binding McpServersDirectory}" FontSize="11" TextWrapping="Wrap"/>
-              </StackPanel>
-            </Border>
-
-            <StackPanel Spacing="6" IsVisible="{Binding HasSkills}">
-              <TextBlock Text="已加载技能包" FontSize="12" FontWeight="SemiBold"/>
-              <ItemsControl ItemsSource="{Binding Skills}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,6">
-                      <StackPanel Spacing="2">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                          <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"/>
-                          <TextBlock Text="{Binding Category}" FontSize="10"
-                                     Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <TextBlock Text="{Binding Description}" FontSize="11" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-
-            <StackPanel Spacing="6" IsVisible="{Binding HasMcpServers}">
-              <TextBlock Text="已配置连接器（MCP）" FontSize="12" FontWeight="SemiBold"/>
-              <ItemsControl ItemsSource="{Binding McpServers}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,6">
-                      <StackPanel Spacing="2">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                          <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"/>
-                          <TextBlock Text="{Binding Transport}" FontSize="10"
-                                     Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <TextBlock Text="{Binding Detail}" FontSize="11" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-
-            <TextBlock Text="{Binding CapabilitiesStatus}" FontSize="11" TextWrapping="Wrap"
-                       IsVisible="{Binding HasCapabilitiesStatus}"
-                       Foreground="{DynamicResource TextSecondaryBrush}"/>
-          </StackPanel>
-        </Border>
+        <!-- ═══ 技能包 / 连接器 / 链上钱包（与移动「设置」浮层同一份控件 CapabilitiesView）═══ -->
+        <views:CapabilitiesView/>
 
       </StackPanel>
     </Border>

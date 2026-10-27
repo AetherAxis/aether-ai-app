@@ -1,0 +1,128 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Aether.AI.App.Views.CapabilitiesView">
+
+  <!-- 宿主能力面（**一份 XAML，两端同宿**）：技能包 / 连接器 / 链上钱包。
+       桌面 = 设置页（rail 左下角齿轮）；移动 = 「模型设置」浮层的能力页签。
+       内容刻意不套 ScrollViewer：由宿主提供滚动（桌面设置页外层已有，移动浮层包一层），避免嵌套滚动。 -->
+  <StackPanel Spacing="18">
+
+    <!-- ═══ 技能包与连接器（手机桌面同一份目录布局；本机跑不了的就明说，不静默降级）═══ -->
+    <Border Classes="msg-card" Padding="20,18" CornerRadius="14" IsVisible="{Binding HasCapabilities}">
+      <StackPanel Spacing="14">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="3">
+            <TextBlock Text="技能包与连接器" FontSize="14" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding HostCapabilityText}"
+                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+          </StackPanel>
+          <Button Grid.Column="1" Classes="outline" Padding="10,6" VerticalAlignment="Top"
+                  Command="{Binding RefreshCapabilitiesCommand}">
+            <TextBlock Text="刷新" FontSize="12" VerticalAlignment="Center"/>
+          </Button>
+        </Grid>
+
+        <!-- 目录：把 SKILL.md / mcp 配置放进去即生效（与桌面同一份路径结构，可跨端同步） -->
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="10" Padding="12,10">
+          <StackPanel Spacing="6">
+            <TextBlock Text="技能包目录" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            <SelectableTextBlock Text="{Binding SkillsDirectory}" FontSize="11" TextWrapping="Wrap"/>
+            <TextBlock Text="连接器目录" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+            <SelectableTextBlock Text="{Binding McpServersDirectory}" FontSize="11" TextWrapping="Wrap"/>
+          </StackPanel>
+        </Border>
+
+        <StackPanel Spacing="6" IsVisible="{Binding HasSkills}">
+          <TextBlock Text="已加载技能包" FontSize="12" FontWeight="SemiBold"/>
+          <ItemsControl ItemsSource="{Binding Skills}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,6">
+                  <StackPanel Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"/>
+                      <TextBlock Text="{Binding Category}" FontSize="10"
+                                 Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Description}" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+
+        <StackPanel Spacing="6" IsVisible="{Binding HasMcpServers}">
+          <TextBlock Text="已配置连接器（MCP）" FontSize="12" FontWeight="SemiBold"/>
+          <ItemsControl ItemsSource="{Binding McpServers}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,6">
+                  <StackPanel Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"/>
+                      <TextBlock Text="{Binding Transport}" FontSize="10"
+                                 Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Detail}" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+
+        <TextBlock Text="{Binding CapabilitiesStatus}" FontSize="11" TextWrapping="Wrap"
+                   IsVisible="{Binding HasCapabilitiesStatus}"
+                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+      </StackPanel>
+    </Border>
+
+    <!-- ═══ 链上钱包（客户端配置：节点在哪跟平台无关，只跟这份配置有关）═══ -->
+    <Border Classes="msg-card" Padding="20,18" CornerRadius="14" IsVisible="{Binding HasLedger}">
+      <StackPanel Spacing="14">
+        <StackPanel Spacing="3">
+          <TextBlock Text="链上钱包" FontSize="14" FontWeight="SemiBold"/>
+          <TextBlock Text="钱包是链服务客户端：桌面可以把节点指向本机，手机要指向服务端节点。改完保存，下一轮对话生效；两端填同一份配置就行为一致。"
+                     FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock Text="链节点地址" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+          <TextBox Text="{Binding FormLedgerNode}" FontSize="13" MinHeight="36"
+                   PlaceholderText="host:port，如 10.0.0.5:17805（留空 = 环境变量 / 默认 127.0.0.1:17805）"/>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock Text="交易所托管地址（充值目标 custody）" FontSize="11"
+                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+          <TextBox Text="{Binding FormLedgerCustody}" FontSize="13" MinHeight="36"
+                   PlaceholderText="40 位小写 hex（留空 = 未配置，充值工具会提示）"/>
+        </StackPanel>
+
+        <Button Command="{Binding SaveLedgerSettingsCommand}" Content="保存钱包配置"
+                Classes="primary" Padding="16,8" FontSize="13" MinHeight="38" HorizontalAlignment="Left"/>
+
+        <TextBlock Text="{Binding LedgerStatus}" FontSize="12" TextWrapping="Wrap"
+                   IsVisible="{Binding HasLedgerStatus}"
+                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="10" Padding="12,10">
+          <StackPanel Spacing="6">
+            <TextBlock Text="{Binding LedgerEffectiveText}" FontSize="11" TextWrapping="Wrap"/>
+            <TextBlock Text="配置文件" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+            <SelectableTextBlock Text="{Binding LedgerConfigPath}" FontSize="11" TextWrapping="Wrap"/>
+            <TextBlock Text="钱包种子文件（⚠ 文件即全部财富，不要外发、不要贴进对话）" FontSize="11"
+                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+            <SelectableTextBlock Text="{Binding WalletSeedPath}" FontSize="11" TextWrapping="Wrap"/>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+
+  </StackPanel>
+</UserControl>

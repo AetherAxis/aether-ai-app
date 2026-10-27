@@ -62,10 +62,29 @@ public partial class ChatView : UserControl
 
     private void OpenModelOverlay()
     {
-        // 同一份 LlmProfilesView/SettingsViewModel（移动组合根解析）；首次打开时接 DataContext。
-        if (MobileLlmView.DataContext is null && App.MobileProvider is { } provider)
-            MobileLlmView.DataContext = provider.GetRequiredService<ViewModels.SettingsViewModel>();
+        // 同一份 LlmProfilesView / CapabilitiesView / SettingsViewModel（移动组合根解析）；首次打开时接 DataContext。
+        // 能力页（技能包/连接器/链上钱包）在手机上**只能**从这里进——桌面走 rail 左下角齿轮的设置页。
+        if (App.MobileProvider is { } provider && MobileLlmView.DataContext is null)
+        {
+            var vm = provider.GetRequiredService<ViewModels.SettingsViewModel>();
+            MobileLlmView.DataContext = vm;
+            MobileCapabilitiesView.DataContext = vm;
+        }
+        ShowCapabilitiesTab(false);   // 每次打开回到「模型」页（能力页是深链，不抢默认入口）
         ModelSettingsOverlay.IsVisible = true;
+    }
+
+    private void OnLlmTab(object? sender, RoutedEventArgs e) => ShowCapabilitiesTab(false);
+
+    private void OnCapabilitiesTab(object? sender, RoutedEventArgs e) => ShowCapabilitiesTab(true);
+
+    /// <summary>页签切换：两个视图同一 DataContext，只是换谁可见（不做控件重建，滚动位置/输入框内容都保留）。</summary>
+    private void ShowCapabilitiesTab(bool capabilities)
+    {
+        MobileLlmView.IsVisible = !capabilities;
+        MobileCapabilitiesScroll.IsVisible = capabilities;
+        LlmTabButton.Opacity = capabilities ? 0.55 : 1.0;
+        CapabilitiesTabButton.Opacity = capabilities ? 1.0 : 0.55;
     }
 
     private void OnSettingsClose(object? sender, RoutedEventArgs e)

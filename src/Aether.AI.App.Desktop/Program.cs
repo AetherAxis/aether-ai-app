@@ -6,7 +6,6 @@ using Aether.AI.App.Core;
 using Aether.AI.Brains.Code.Compilation.CSharp;
 using Aether.AI.Core.Agents;
 using Aether.AI.Harness.Tools;
-using Aether.Ledger.AI;
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,10 +21,8 @@ internal static class Program
         // 代码大脑只在桌面形态可编译执行：把 Roslyn 编译器注入共享组合根（App.BuildProvider）。
         // 移动 head 不引本程序集，也就没有编译器——代码 agent 会明确回「未注册 C# 编译器」。
         App.ServicesConfigure = services => services.AddCSharpBrainCompilation();
-        // 链上钱包四工具同理：桌面 head 独家接线（种子文件落在数据目录，节点默认 127.0.0.1:17805）。
-        // 移动端不设本钩子 ⇒ 钱包工具不进注册表（移动闭包不引 ①/NSec 原生库）。
-        App.HeadToolsConfigure = (aether, dataDir) =>
-            aether.AddLedgerTools(Path.Combine(dataDir, "wallet.seed"));
+        // 链上钱包**不再**在 head 里接：它是纯客户端，已移到共享组合根
+        // （节点地址读 <dataDir>/ledger.json，桌面想指本机节点就填 127.0.0.1:17805）。
 
         // 无头冒烟：与 GUI 完全同一条 DI 组合链（App.BuildProvider），跑规则大脑全链路 + 审批自恢复轮。
         // exit 0 = 通过——CI / 命令行验收用（L2 的无 GUI 等价物）。

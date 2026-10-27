@@ -10,6 +10,7 @@ using Aether.AI.Core.Agents;
 using Aether.AI.Hosting;
 using Aether.AI.Harness.Tools;
 using Aether.AI.Mcp;
+using Aether.Ledger.AI;
 using Aether.SystemTools.AI;
 using Aether.Workbench;
 using Aether.Workbench.Abstractions;
@@ -51,11 +52,10 @@ public partial class App : Application
     public static Action<IServiceCollection>? ServicesConfigure { get; set; }
 
     /// <summary>
-    /// head 专属**工具**注入点：<c>(builder, dataDir) =&gt; …</c>，在共享工具（⑭ SystemTools）注册之后执行。
-    /// 桌面 head 用它接 <c>AddLedgerTools</c>（链上钱包工具的种子文件落在数据目录）；
-    /// 移动 head 不设——移动闭包因此不引 ① aether-ledger（NSec 的原生依赖不进 iOS/Android 包）。
-    /// 与 <see cref="ServicesConfigure"/> 同一职责分工：**能跑在手机上的能力进共享组合根，
-    /// 需要桌面宿主的（Roslyn / 链上钱包 / 本地节点）走 head 钩子**。
+    /// head 专属**工具**注入点：<c>(builder, dataDir) =&gt; …</c>，在共享工具（⑭ SystemTools + 链上钱包）注册之后执行。
+    /// 目前没有消费者——链上钱包已移到共享组合根（见 <see cref="BuildProvider"/>：钱包是纯客户端，
+    /// 手机桌面都能用，节点地址由 <c>ledger.json</c> 给）。留着这个钩子是给**真正只能在桌面跑**的工具
+    /// （依赖本机进程/窗口/终端的）留位；设了就等于「只有桌面 head 有这些工具」。
     /// </summary>
     public static Action<AetherAIBuilder, string>? HeadToolsConfigure { get; set; }
 
@@ -295,7 +295,15 @@ public partial class App : Application
             "Echo", "回声演示工具：原样返回输入", "Demo",
             _ => AIFunctionFactory.Create((Func<string, string>)(text => $"echo:{text}"), "Echo"),
             ToolApprovalLevel.Dangerous));
-        // head 专属工具（桌面：链上钱包四工具）。移动端不设钩子 = 这些工具根本不在注册表里。
+        // ⑭ 链上钱包 4 个（LedgerGetInfo / GetBalance / Transfer / DepositToExchange）——**两端共享**。
+        // 钱包只是「RPC + 本地签名」的客户端：节点在哪跟平台无关，只跟配置有关
+        // （<dataDir>/ledger.json：桌面可指本机，手机指服务端；优先级 配置文件 > 环境变量 > 默认）。
+        // 种子文件也在数据目录（<dataDir>/wallet.seed）——两端同一路径，换端搬数据目录即可续用同一个钱包。
+        var ledger = LedgerSettings.Load(dataDir);
+        services.AddSingleton(ledger);   // 设置页「链上钱包」区要显示/编辑它
+        aether.AddLedgerTools(Path.Combine(dataDir, LedgerSettings.SeedFileName),
+            ledger.NodeAddress, ledger.CustodyAddress);
+        // head 专属工具（当前无消费者；设了 = 只有该 head 注册这些工具）。
         HeadToolsConfigure?.Invoke(aether, dataDir);
 
         services.AddSingleton(capabilities);   // 设置页「技能包与连接器」区要显示这两个目录

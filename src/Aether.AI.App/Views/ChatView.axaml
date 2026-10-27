@@ -331,16 +331,33 @@
     <DockPanel>
       <Border DockPanel.Dock="Top" Classes="pane-head" Padding="16,0" Background="{DynamicResource CardBgBrush}"
               BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Grid.Column="0" Text="模型设置" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
-                     Foreground="{DynamicResource TextPrimaryBrush}"/>
-          <Button Grid.Column="1" Click="OnSettingsClose" Classes="ghost" Padding="10,6" ToolTip.Tip="返回聊天">
+        <Grid ColumnDefinitions="*,Auto,Auto">
+          <!-- 两页签：模型档案 | 能力（技能包/连接器/链上钱包）——桌面同内容在设置页，手机在这里 -->
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <Button x:Name="LlmTabButton" Click="OnLlmTab" Classes="ghost" Padding="10,6"
+                    ToolTip.Tip="LLM 连接档案">
+              <TextBlock Text="模型" FontSize="13" VerticalAlignment="Center"/>
+            </Button>
+            <Button x:Name="CapabilitiesTabButton" Click="OnCapabilitiesTab" Classes="ghost" Padding="10,6"
+                    ToolTip.Tip="技能包 / 连接器 / 链上钱包">
+              <TextBlock Text="能力" FontSize="13" VerticalAlignment="Center"/>
+            </Button>
+          </StackPanel>
+          <Button Grid.Column="2" Click="OnSettingsClose" Classes="ghost" Padding="10,6" ToolTip.Tip="返回聊天">
             <Path Data="{x:Static wb:Codicons.ChromeClose}" Stretch="Uniform" Width="14" Height="14"
                   Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
           </Button>
         </Grid>
       </Border>
-      <views:LlmProfilesView x:Name="MobileLlmView"/>
+      <Panel>
+        <views:LlmProfilesView x:Name="MobileLlmView"/>
+        <ScrollViewer x:Name="MobileCapabilitiesScroll" IsVisible="False"
+                      HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+          <Border Padding="24,20,24,24">
+            <views:CapabilitiesView x:Name="MobileCapabilitiesView"/>
+          </Border>
+        </ScrollViewer>
+      </Panel>
     </DockPanel>
   </Border>
 
