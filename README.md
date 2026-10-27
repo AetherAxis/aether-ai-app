@@ -10,7 +10,7 @@
 
 - ⑩ `aether-workbench`——桌面壳/主题引擎/布局（spike 仅验证移动 TFM 可引用 + 主题清单可加载）
 - ⑫ `aether-ai`——Hosting + Brains.Rule + Memory.Sqlite（**移动端闭包不带 Roslyn/FCS/LLM SDK 之外的重物**）
-- M1 起：⑬ `aether-knowledge`（agent/workflow/rule 目录）、⑭ `aether-ai-integrations`（业务工具，opt-in）
+- 待接：⑭ `aether-ai-integrations`（业务工具，opt-in）——**⑬ `aether-knowledge` 已于 2026-10-27 归档**（知识对象能力未定，接 ⑬ 从待办移除）
 
 ## M0 验证清单（2026-10-24 全部通过 ✅）
 
