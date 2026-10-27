@@ -1,4 +1,5 @@
 using System.IO;
+using Aether.AI.Abstractions;
 using Aether.AI.App.Core;
 using Aether.AI.App.ViewModels;
 using Aether.AI.App.Views;
@@ -8,6 +9,8 @@ using Aether.AI.Brains.Rule;
 using Aether.AI.Core.Agents;
 using Aether.AI.Hosting;
 using Aether.AI.Harness.Tools;
+using Aether.AI.Mcp;
+using Aether.SystemTools.AI;
 using Aether.Workbench;
 using Aether.Workbench.Abstractions;
 using Aether.Workbench.Theming;
@@ -46,6 +49,23 @@ public partial class App : Application
     /// 移动端保持轻量（代码大脑在移动端会明确报「未注册 C# 编译器」）。
     /// </summary>
     public static Action<IServiceCollection>? ServicesConfigure { get; set; }
+
+    /// <summary>
+    /// head 专属**工具**注入点：<c>(builder, dataDir) =&gt; …</c>，在共享工具（⑭ SystemTools）注册之后执行。
+    /// 桌面 head 用它接 <c>AddLedgerTools</c>（链上钱包工具的种子文件落在数据目录）；
+    /// 移动 head 不设——移动闭包因此不引 ① aether-ledger（NSec 的原生依赖不进 iOS/Android 包）。
+    /// 与 <see cref="ServicesConfigure"/> 同一职责分工：**能跑在手机上的能力进共享组合根，
+    /// 需要桌面宿主的（Roslyn / 链上钱包 / 本地节点）走 head 钩子**。
+    /// </summary>
+    public static Action<AetherAIBuilder, string>? HeadToolsConfigure { get; set; }
+
+    /// <summary>
+    /// head 显式声明的宿主类型：桌面 head = <see cref="HostCapability.DesktopOnly"/>，移动 head = <see cref="HostCapability.MobileOnly"/>。
+    /// <c>null</c>（默认）= 退回按 Avalonia lifetime 推断。
+    /// 显式声明的理由：无头路径（<c>--smoke</c> / <c>--tools</c> / CI）里 <c>Application.Current</c> 还不存在，
+    /// 推断会一律落到「手机」——桌面 head 的命令工具与钱包工具因此在巡检里消失。声明式判定与 GUI 运行期一致。
+    /// </summary>
+    public static HostCapability? HeadHost { get; set; }
 
     /// <summary>启动参数（iOS/Android head 的 Main/OnCreate 转存——移动 lifetime 不暴露 Args）。
     /// --demo：自动跑规则演示 + 审批演示（模拟器验收免点按注入）。</summary>
@@ -204,6 +224,14 @@ public partial class App : Application
         var dataDir = dataDirectory ?? ResolveDataDirectory();
         Directory.CreateDirectory(dataDir);
 
+        // 形态判定放最前：工具注册要按宿主能力取舍（⑫ AetherAIOptions.Host + ⑭ HostCapability）。
+        // 优先用 head 的显式声明（无头路径里 Avalonia 还没起来）；未声明才按 lifetime 推断：
+        // 桌面 = 窗口形态；Android/iOS = 各自 lifetime（都落到 else 分支）。
+        var isDesktop = HeadHost is { } declared
+            ? declared == HostCapability.DesktopOnly
+            : Avalonia.Application.Current?.ApplicationLifetime
+                is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
+
         var services = new ServiceCollection();
 
         // —— ⑩ 布局引擎：工作台（nav rail = chat；settings 走 rail 左下角齿轮入口）——
@@ -236,12 +264,41 @@ public partial class App : Application
         services.AddSingleton<Aether.AI.Brains.Abstractions.IChatClientFactory>(sp => sp.GetRequiredService<AppLlmClientFactory>());
         services.AddLlmBrainFactory();
         var aether = services.AddAetherAI();
+        // 宿主能力声明（⑫ ToolRegistry 据此过滤）：桌面 = DesktopOnly，手机 = MobileOnly。
+        // 作用有二：① UI 不再展示当前宿主跑不了的工具；② ResolveAll 兜底跳过并记警告——
+        // 换端同步 agents.json 时「桌面版勾了 ExecuteCommand、手机版也勾着」不会在调用时炸。
+        // 技能包目录 + 连接器目录：手机桌面**同一份布局**（AiCapabilityPaths），跨端同步直接搬。
+        var capabilities = AiCapabilityPaths.For(dataDir).EnsureDirectories();
+        aether.Configure(o =>
+        {
+            o.Host = isDesktop ? HostCapability.DesktopOnly : HostCapability.MobileOnly;
+            // 技能包（SKILL.md）：提示词级知识两端同源加载；**脚本执行**（run_skill_script 的 .py/.sh/.js）
+            // 要 fork 子进程——iOS 沙盒禁止、手机也没有解释器，故只在桌面开放。手机端加载同一份 skill，
+            // 模型仍按 SKILL.md 的步骤推理，只是执行脚本会拿到一条明确说明（不是空白失败）。
+            o.SkillsDirectory = capabilities.SkillsDirectory;
+            // 工作笔记（EnableFileMemory）的根：每个 agent 一个子目录（⑫ 按 definition.Id 再拼一层）。
+            // 不给根 = 该能力被静默禁用；桌面/手机都指向数据目录，所以两端行为一致。
+            o.FileMemoryRoot = Path.Combine(dataDir, "agent-notes");
+            o.EnableSkillScripts = AiCapabilityPolicy.SupportsSkillScripts(isDesktop);
+        });
+        // 连接器（MCP）：HTTP/SSE 两端同源；stdio（command+args 起子进程）只在桌面。
+        // 手机端被裁掉的 server 连连接尝试都不发生，配置文件原样留在盘上给桌面用。
+        aether.AddMcpServersFromDirectory(capabilities.McpServersDirectory,
+            filter: cfg => AiCapabilityPolicy.SupportsMcpServer(cfg, isDesktop));
+        // ⑭ 系统工具 15 个（文件/搜索/HTTP/命令）——手机桌面同一份注册代码，差别只有命令类：
+        // iOS 沙盒禁止 fork，`ExecuteCommand`/`ExecuteShellCommand` 在手机端连注册都跳过
+        // （文件/搜索/FetchUrl 是纯托管 + 网络，两端同源可用）。
+        aether.AddSystemTools(includeCommandTools: isDesktop);
         // Echo 演示工具：Dangerous 等级（审批演示 agent 的 RequireToolApproval 会拦它走审批循环；
         // 不开审批的 agent 照常直跑——等级只在审批开启时参与门控）。
         aether.ConfigureToolRegistry(registry => registry.Register(
             "Echo", "回声演示工具：原样返回输入", "Demo",
             _ => AIFunctionFactory.Create((Func<string, string>)(text => $"echo:{text}"), "Echo"),
             ToolApprovalLevel.Dangerous));
+        // head 专属工具（桌面：链上钱包四工具）。移动端不设钩子 = 这些工具根本不在注册表里。
+        HeadToolsConfigure?.Invoke(aether, dataDir);
+
+        services.AddSingleton(capabilities);   // 设置页「技能包与连接器」区要显示这两个目录
 
         // —— App.Core：SQLite 覆盖 + 目录/运行桥/持久化 ——
         services.AddAetherAiApp(o =>
@@ -254,8 +311,7 @@ public partial class App : Application
                 sp.GetRequiredService<CustomAgentStore>().Agents.Select(CustomAgentStore.ToDefinition);
         });
 
-        // —— App 服务：UI 端口实现（按形态取舍）+ VM ——
-        var isDesktop = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime;
+        // —— App 服务：UI 端口实现（按形态取舍）+ VM ——（isDesktop 已在方法开头判定）
         services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
         if (isDesktop)
         {
@@ -280,6 +336,14 @@ public partial class App : Application
         var compilation = provider.GetRequiredService<ICodeCompilationService>();
         provider.GetRequiredService<CustomAgentStore>().Changed += compilation.Reload;
         compilation.Reload();
+
+        // 连接器（MCP）后台连接：不阻塞首帧，连上后工具自动进 ToolRegistry（⑫ McpManagementService）。
+        // 没有配置时是空转（零成本）；单个 server 连不上只记在它自己身上（设置页能看到 Error），不影响聊天。
+        _ = Task.Run(async () =>
+        {
+            try { await provider.GetRequiredService<IMcpManagementService>().EnsureStartedAsync(); }
+            catch { /* 连接器整体不可用不应拖垮聊天 */ }
+        });
         return provider;
     }
 

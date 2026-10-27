@@ -5,6 +5,8 @@ using Aether.AI.App;
 using Aether.AI.App.Core;
 using Aether.AI.Brains.Code.Compilation.CSharp;
 using Aether.AI.Core.Agents;
+using Aether.AI.Harness.Tools;
+using Aether.Ledger.AI;
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,15 +17,29 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // 显式声明桌面宿主：命令工具 / 钱包工具在无头巡检（--tools/--smoke/CI）里也要按桌面取舍。
+        App.HeadHost = HostCapability.DesktopOnly;
         // 代码大脑只在桌面形态可编译执行：把 Roslyn 编译器注入共享组合根（App.BuildProvider）。
         // 移动 head 不引本程序集，也就没有编译器——代码 agent 会明确回「未注册 C# 编译器」。
         App.ServicesConfigure = services => services.AddCSharpBrainCompilation();
+        // 链上钱包四工具同理：桌面 head 独家接线（种子文件落在数据目录，节点默认 127.0.0.1:17805）。
+        // 移动端不设本钩子 ⇒ 钱包工具不进注册表（移动闭包不引 ①/NSec 原生库）。
+        App.HeadToolsConfigure = (aether, dataDir) =>
+            aether.AddLedgerTools(Path.Combine(dataDir, "wallet.seed"));
 
         // 无头冒烟：与 GUI 完全同一条 DI 组合链（App.BuildProvider），跑规则大脑全链路 + 审批自恢复轮。
         // exit 0 = 通过——CI / 命令行验收用（L2 的无 GUI 等价物）。
         if (args.Contains("--smoke"))
         {
             SmokeAsync().GetAwaiter().GetResult();
+            return;
+        }
+
+        // 工具清单巡检：走真实组合（含桌面 head 钩子）打印**当前宿主可用**的工具——
+        // 验收「⑭ 工具是否真接上了」用（`--tools` 里应能看到 系统工具 + 链上钱包 两组）。
+        if (args.Contains("--tools"))
+        {
+            DumpTools();
             return;
         }
 
@@ -85,6 +101,29 @@ internal static class Program
             ok = false;
         }
         Environment.ExitCode = ok ? 0 : 1;
+    }
+
+    /// <summary>按分类打印当前宿主可用的工具（名字 / 审批等级）；同时列出「注册了但当前宿主不可用」的，
+    /// 便于一眼看出手机端会少掉哪些。</summary>
+    private static void DumpTools()
+    {
+        var provider = App.BuildProvider();
+        var registry = provider.GetRequiredService<ToolRegistry>();
+
+        var usable = registry.GetUsableMetas();
+        Console.WriteLine($"[tools] 宿主={registry.CurrentHost}，可用 {usable.Count} 个，注册总数 {registry.GetAllMetas().Count} 个：");
+        foreach (var group in usable.GroupBy(m => m.Category).OrderBy(g => g.Key))
+        {
+            Console.WriteLine($"[tools] {group.Key}（{group.Count()}）");
+            foreach (var meta in group)
+                Console.WriteLine($"[tools]   - {meta.Name} [{meta.ApprovalLevel}] {meta.Description}");
+        }
+
+        // 按名字比对：ToolMeta 每次投影都是新实例，直接 Except 会因引用不等而把全部算成「被过滤」。
+        var usableNames = usable.Select(m => m.Name).ToHashSet(StringComparer.Ordinal);
+        var hidden = registry.GetAllMetas().Select(m => m.Name).Where(n => !usableNames.Contains(n)).ToList();
+        if (hidden.Count > 0)
+            Console.WriteLine($"[tools] 当前宿主不可用（已注册、被过滤）：{string.Join(", ", hidden)}");
     }
 
     /// <summary>

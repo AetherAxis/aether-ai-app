@@ -19,6 +19,9 @@
          大脑实现的取舍（Rule/LLM/编译）留在组合根（App 层）——Core 只认 HarnessRuntime。 -->
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Hosting\Aether.AI.Hosting.csproj" />
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Memory.Sqlite\Aether.AI.Memory.Sqlite.csproj" />
+    <!-- ⑫ 平台 DTO（IMcpServerConfig/McpServerConfig 等纯数据契约）——能力取舍判定（AiCapabilityPolicy）要认
+         MCP server 的 transport，但不需要 MCP 客户端本身（那是 App 层的事）。 -->
+    <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Abstractions\Aether.AI.Abstractions.csproj" />
     <!-- 代码大脑的编译管线契约（CodeNote/ICodeCompilationService——纯抽象，本层不带 Roslyn）。
          Roslyn 编译器只在桌面 head 注册，移动闭包保持干净。 -->
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Brains.Code.Compilation\Aether.AI.Brains.Code.Compilation.csproj" />

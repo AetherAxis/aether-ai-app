@@ -43,6 +43,12 @@
                             <TextBlock Text="{Binding KindLabel}" FontSize="10"
                                        Foreground="{DynamicResource TextSecondaryBrush}"/>
                           </Border>
+                          <!-- 记忆标：开了长期记忆或工作笔记才出现（一眼看出这个 agent 会记事） -->
+                          <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="6" Padding="6,1"
+                                  VerticalAlignment="Center" IsVisible="{Binding HasMemory}"
+                                  ToolTip.Tip="已开启记忆（长期记忆 / 工作笔记）">
+                            <TextBlock Text="记忆" FontSize="10" Foreground="{DynamicResource AccentBrush}"/>
+                          </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Description}" FontSize="11"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
@@ -123,6 +129,17 @@
                   </StackPanel>
                 </StackPanel>
               </Grid>
+
+              <!-- 记忆：两种能力都在数据目录里落盘，手机与桌面同一份档案、同一个库 -->
+              <StackPanel Spacing="4">
+                <TextBlock Text="记忆" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <StackPanel Spacing="2">
+                  <CheckBox IsChecked="{Binding FormLongTermMemory}" FontSize="12" Content="长期记忆（跨会话）"
+                            ToolTip.Tip="每轮前召回、每轮后沉淀到 memory.db——换会话、重启、换端都还记得"/>
+                  <CheckBox IsChecked="{Binding FormFileMemory}" FontSize="12" Content="工作笔记（agent 自建笔记库）"
+                            ToolTip.Tip="agent 可读写自己的笔记文件（数据目录/agent-notes/&lt;id&gt;/），适合长文档整理"/>
+                </StackPanel>
+              </StackPanel>
             </StackPanel>
 
             <!-- ——— 代码大脑 ——— -->

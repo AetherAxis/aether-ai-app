@@ -10,7 +10,7 @@
 
 - ⑩ `aether-workbench`——桌面壳/主题引擎/布局（spike 仅验证移动 TFM 可引用 + 主题清单可加载）
 - ⑫ `aether-ai`——Hosting + Brains.Rule + Memory.Sqlite（**移动端闭包不带 Roslyn/FCS/LLM SDK 之外的重物**）
-- 待接：⑭ `aether-ai-integrations`（业务工具，opt-in）——**⑬ `aether-knowledge` 已于 2026-10-27 归档**（知识对象能力未定，接 ⑬ 从待办移除）
+- ⑭ `aether-ai-integrations`——系统工具 15 个（手机桌面共享，命令类仅桌面）+ 链上钱包 4 个（桌面 head 经 `App.HeadToolsConfigure` 独占接线，移动闭包不引 NSec）；**⑬ `aether-knowledge` 已于 2026-10-27 归档**
 
 ## M0 验证清单（2026-10-24 全部通过 ✅）
 
@@ -132,6 +132,74 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 单测 `tests/…App.Tests/CustomAgentTests.cs` 新增 3 例：代码大脑映射 / **真编译跑一轮（Echo 全链路）** /
 编译失败显示在列表行上。
 
+### M2-tools（2026-10-27）：⑭ 工具真接入（手机 / 桌面**同一条**注册路径）
+
+此前 ⑮ 的工具注册表里只有演示用的 `Echo`——agent 勾得到工具，却全是空的。现在把 ⑭ 适配器接进来：
+
+| 分组 | 工具 | 来源 | 宿主 |
+|---|---|---|---|
+| 系统工具（15） | ReadFile / WriteFile / EditFile / LineEditFile / DeleteFile / MoveFile / Grep / Glob / ExploreDirectory / DiffFile / ApplyPatch / ApplyPatchWithDelete / FetchUrl | ⑭ `AddSystemTools` | 两端通用 |
+| 系统工具·命令类（2） | ExecuteCommand / ExecuteShellCommand | 同上 | **仅桌面**（iOS 沙盒禁止 fork） |
+| 链上钱包（4） | LedgerGetInfo / LedgerGetBalance / LedgerTransfer(Dangerous) / LedgerDepositToExchange(Confirm) | ⑭ `AddLedgerTools` | **仅桌面**（NSec 原生库） |
+
+**一体化设计（关键：手机桌面同一个 App、同一份注册代码）**
+
+- `App.BuildProvider` 里**一处**注册共享工具：`aether.AddSystemTools(includeCommandTools: isDesktop)`。
+  手机端 `includeCommandTools:false` ⇒ 命令工具连注册都不发生（不是「注册了再隐藏」）；桌面端注册并声明 `DesktopOnly`。
+- 宿主由 head **显式声明**：`App.HeadHost`（桌面 `DesktopOnly` / 移动 `MobileOnly`），未声明才按 Avalonia lifetime 推断
+  —— 无头路径（`--smoke`/`--tools`/CI）里 Avalonia 还没起来，靠推断会一律落到「手机」。声明值同时喂给
+  ⑫ `AetherAIOptions.Host`，`ToolRegistry.ResolveAll` 在运行期按 `HostCapability` 兜底跳过不匹配的工具。
+- 需要桌面宿主的**额外**能力走 head 钩子 `App.HeadToolsConfigure`（与 `ServicesConfigure` 同款分工）：
+  桌面 head 用它 `AddLedgerTools(...)`，**移动 head 不设** ⇒ 移动闭包不引 ① aether-ledger，NSec 原生库不进 iOS/Android 包。
+  ⑭ SystemTools 本身是纯托管代码（只依赖 ⑫ Hosting + Microsoft.Extensions.Http），可以安心进移动闭包。
+- UI 与服务端口径一致：agent 编辑页的工具勾选列表改用 `ToolRegistry.GetUsableMetas()`（新增，过滤口径与
+  `ResolveAll` 逐条相同）——手机上不会出现「执行命令」，桌面上也不会有手机专属工具。
+
+**验收**：`--tools` 打印当前宿主可用工具清单（桌面 20 个 = 系统 15 + 钱包 4 + Echo；手机 14 个 = 系统 13 + Echo）；
+`tests/…App.Tests/AppToolWiringTests.cs` 5 例覆盖：手机宿主不含命令工具（且未注册）、桌面专属工具「注册但不可勾选且 ResolveAll 跳过」、
+head 钩子决定钱包类工具是否进表、以及**真解析 ReadFile 真读文件**。桌面 head / Android / iOS 三个 TFM 均编译通过。
+
+### M2-caps（2026-10-27）：技能包 + 连接器（手机桌面一体）
+
+参照手机端 AI 助手通行做法（豆包的「技能 / 连接器 / 工作伙伴」口径：技能 = 声明式专业流程，
+连接器 = 远端服务），把 ⑫ 已有的两套能力接进 ⑮，**同一个 App、同一份目录布局、同一条注册路径**，
+差别只在「这台机器跑不跑得了」：
+
+| 能力 | 放哪 | 格式 | 手机 | 桌面 |
+|---|---|---|---|---|
+| 技能包 | `<dataDir>/skills/<name>/SKILL.md` | YAML frontmatter（name/description/category）+ Markdown 正文 | ✅ 正文加载，模型按步骤推理 | ✅ 正文 + **脚本可执行**（.py/.sh/.js） |
+| 连接器 | `<dataDir>/mcp-servers/*.json` | 兼容 Claude Code/Cursor 的 `mcpServers` 映射 | ✅ 仅 HTTP/SSE | ✅ HTTP + stdio |
+
+- **技能包正文两端同源**：`AetherAIOptions.SkillsDirectory` 两端都设，走 MAF 的文件技能源（按需 load 正文，索引常驻）。
+  脚本执行由新增的 `AetherAIOptions.EnableSkillScripts` 控制——手机端 false，`run_skill_script` 返回一条明确说明
+  （「当前宿主不支持执行 skill 脚本，请只依据 SKILL.md 推理」），不是空白失败。
+- **连接器按宿主裁**：`AddMcpServersFromDirectory(dir, filter)` 新增 filter 重载；手机端传
+  `AiCapabilityPolicy.SupportsMcpServer`（= 只要 `!IsStdio`）。被裁掉的 server **连连接尝试都不发生**，
+  配置 JSON 原样留盘给桌面用。
+- 取舍判定集中在 `Aether.AI.App.Core/AiCapabilityPolicy`（组合根与测试同一份口径），目录布局在
+  `AiCapabilityPaths`（`skills/` + `mcp-servers/`，`EnsureDirectories` 幂等建目录）。
+- App 启动后台连一次 MCP（`IMcpManagementService.EnsureStartedAsync`，不阻塞首帧）；连上的工具自动进
+  `ToolRegistry`，agent 编辑页的勾选列表立刻能看到（MCP 工具默认 `Dangerous` 审批等级）。
+- **设置页新增「技能包与连接器」卡片**：本机能力一句话说明（桌面=脚本+stdio 可用 / 手机=正文+HTTP）、
+  两个目录路径、已加载技能包列表、连接器状态（已连接/失败原因/工具数）+ 刷新（技能重扫盘、连接器重连）。
+- 单测 `AiCapabilitiesTests` 7 例：目录派生、技能两端都加载、脚本开关按宿主、HTTP/stdio 取舍、
+  **手机端注册表只剩 HTTP（stdio 不连）**、设置页连接器状态映射。
+
+### M2-memory（2026-10-27）：长期记忆 / 工作笔记开关
+
+⑫ 早就有这两条能力，⑮ 之前没开（`EnableLongTermMemory` / `EnableFileMemory` 都拿不到）。现在 agent 编辑窗
+LLM 大脑下多了「记忆」区两个开关，列表行出现「记忆」标：
+
+| 开关 | 映射 | 落盘 | 语义 |
+|---|---|---|---|
+| 长期记忆（跨会话） | `AgentDefinition.EnableLongTermMemory` → ⑫ `MemoryContextProvider` | `<dataDir>/memory.db`（`SqliteMemoryStore`，⑮ 早已注册） | 每轮前召回、每轮后沉淀，换会话/重启/换端都记得 |
+| 工作笔记 | `AgentDefinition.EnableFileMemory` → MAF `FileSystemAgentFileStore` | `<dataDir>/agent-notes/<agentId>/` | agent 自己写的长文档笔记（`AetherAIOptions.FileMemoryRoot`） |
+
+- 两开关默认**关**（沿用 ⑫「默认全轻量」的口径），存在 `agents.json` 里，随 agent 跨端同步。
+- `FileMemoryRoot` 必须给根，否则 ⑫ 静默禁用文件记忆——⑮ 在 `BuildProvider` 里指向数据目录，两端一致。
+- 单测 `MemoryToggleTests` 4 例：根目录落在数据目录、开关双向映射（含编辑一次不丢）、管理窗勾选→落盘→
+  读回为 true 且行上有标记、聊天目录里的定义带开关。
+
 ### 移动端（方案A 实证，2026-10-24）
 
 同一份 ChatView/ChatViewModel/Core 直跑 iOS 与 Android（`src/Aether.AI.App.{iOS,Android}` head）：
@@ -154,6 +222,7 @@ dotnet run --project src/Aether.AI.App.Desktop     # GUI
 dotnet run --project src/Aether.AI.App.Desktop -- --smoke       # 规则全链路 + 审批自恢复（exit 0 = L2 无 GUI 等价）
 dotnet run --project src/Aether.AI.App.Desktop -- --llm-smoke    # LLM 真模型冒烟（需已配置档案；无档案 SKIP）
 dotnet run --project src/Aether.AI.App.Desktop -- --dump-layout  # 版式诊断：三档窗口尺寸 × 各 tab 的视觉树几何 → %TEMP%/aether-layout-*.txt
+dotnet run --project src/Aether.AI.App.Desktop -- --tools        # 工具巡检：当前宿主可用工具（分类/审批等级）+ 被过滤项
 # 实测（2026-10-24，DeepSeek）：deepseek-chat 流式 token 段>0 ✅；deepseek-reasoner reasoning 段>0（💭 思考卡路径）✅
 dotnet build aether-ai-app.slnx                    # 全仓（含 spike 的 android/ios TFM，需本机 workload）
 ```

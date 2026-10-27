@@ -51,6 +51,14 @@ public sealed record CustomAgent
     /// <summary>启用 4 档运行模式选择器（规划 / 手动 / 自动编辑 / 自动）。</summary>
     public bool EnableModePicker { get; init; } = true;
 
+    /// <summary>启用长期记忆（默认关）：跨会话记住用户与任务——每轮前召回、每轮后沉淀，
+    /// 落在 &lt;dataDir&gt;/memory.db（与聊天历史分开）。手机/桌面同一个库，换端继续用。</summary>
+    public bool EnableLongTermMemory { get; init; }
+
+    /// <summary>启用工作笔记（默认关）：agent 自己维护的笔记文件（&lt;dataDir&gt;/agent-notes/&lt;agentId&gt;/）。
+    /// 与长期记忆的区别：笔记是 agent 主动写的长文档（可读可改），长期记忆是自动召回/沉淀的条目。</summary>
+    public bool EnableFileMemory { get; init; }
+
     // —————————————— 规则大脑 ——————————————
 
     /// <summary>触发正则（对最新一条 user 消息）。空 = 任意消息都命中。</summary>
@@ -198,6 +206,8 @@ public sealed class CustomAgentStore
         Tools = def.Tools,
         RequireToolApproval = def.RequireToolApproval,
         EnableModePicker = def.EnableAgentModeProvider,
+        EnableLongTermMemory = def.EnableLongTermMemory,
+        EnableFileMemory = def.EnableFileMemory,
     };
 
     private static AgentDefinition ToLlmDefinition(CustomAgent a) => new()
@@ -214,6 +224,10 @@ public sealed class CustomAgentStore
         RequireToolApproval = a.RequireToolApproval,
         EnableTodoProvider = a.EnableModePicker,
         EnableAgentModeProvider = a.EnableModePicker,
+        // 长期记忆 / 工作笔记：手机桌面同一条路径——⑫ 的 MemoryContextProvider + FileSystemAgentFileStore，
+        // 落盘位置都在数据目录下（memory.db / agent-notes/<id>/），换端同步同一份档案就接着用。
+        EnableLongTermMemory = a.EnableLongTermMemory,
+        EnableFileMemory = a.EnableFileMemory,
     };
 
     private static AgentDefinition ToRuleDefinition(CustomAgent a)

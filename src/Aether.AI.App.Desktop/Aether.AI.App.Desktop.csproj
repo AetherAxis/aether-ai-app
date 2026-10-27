@@ -23,6 +23,9 @@
     <!-- 代码大脑的 Roslyn 编译器：**只在桌面 head 引用**（App 层只依赖纯抽象管线），
          移动 head 不背 Roslyn/FCS——代码 agent 在移动端会明确报「未注册 C# 编译器」。 -->
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Brains.Code.Compilation.CSharp\Aether.AI.Brains.Code.Compilation.CSharp.csproj" />
+    <!-- 链上钱包四工具：**只在桌面 head 引用**（⑭ 适配器 → ① aether-ledger → NSec 原生库）。
+         移动 head 不引本程序集，钱包工具就不会出现在手机端（App.HeadToolsConfigure 只有桌面设）。 -->
+    <ProjectReference Include="..\..\..\aether-ai-integrations\src\Aether.Ledger.AI\Aether.Ledger.AI.csproj" />
   </ItemGroup>
 
 </Project>

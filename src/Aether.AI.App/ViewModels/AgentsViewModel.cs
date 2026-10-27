@@ -17,6 +17,9 @@ public sealed class CustomAgentRow
     public required string KindLabel { get; init; }
     public required bool IsRule { get; init; }
 
+    /// <summary>是否开了记忆（长期记忆或工作笔记）——列表行上给个「记忆」标，免得要进编辑窗才知道。</summary>
+    public bool HasMemory { get; init; }
+
     /// <summary>代码大脑编译错误（无错 = 空）。由 <c>ICodeCompilationService.LoadErrors</c> 回填。</summary>
     public string CompileError { get; init; } = string.Empty;
 
@@ -76,7 +79,9 @@ public partial class AgentsViewModel : ObservableObject
         _compilation = serviceProvider.GetRequiredService<ICodeCompilationService>();
         _dispatcher = serviceProvider.GetRequiredService<IUiDispatcher>();
 
-        foreach (var meta in _tools.GetAllMetas())
+        // 只列**当前宿主可用**的工具：手机端不出现「执行命令」等桌面专属工具，桌面端不出现手机专属工具。
+        // 过滤口径与 ⑫ ToolRegistry.ResolveAll 一致（同一 HostCapability 判定）——UI 与运行时不会说法不一。
+        foreach (var meta in _tools.GetUsableMetas())
         {
             ToolOptions.Add(new ToolOption
             {
@@ -112,6 +117,7 @@ public partial class AgentsViewModel : ObservableObject
                 Description = a.Description,
                 KindLabel = KindLabelOf(a.Kind),
                 IsRule = a.Kind == CustomAgentKind.Rule,
+                HasMemory = a.EnableLongTermMemory || a.EnableFileMemory,
                 CompileError = errors.TryGetValue(a.Id, out var error) ? error : string.Empty,
                 Source = a,
                 EditCommand = EditAgentCommand,
@@ -174,6 +180,10 @@ public partial class AgentsViewModel : ObservableObject
     [ObservableProperty] private string _formInstructions = string.Empty;
     [ObservableProperty] private string _formModelProfile = FollowCurrentProfile;
     [ObservableProperty] private bool _formRequireApproval = true;
+    /// <summary>长期记忆（跨会话）：⑫ MemoryContextProvider + &lt;dataDir&gt;/memory.db。</summary>
+    [ObservableProperty] private bool _formLongTermMemory;
+    /// <summary>工作笔记：agent 自建笔记文件（&lt;dataDir&gt;/agent-notes/&lt;id&gt;/）。</summary>
+    [ObservableProperty] private bool _formFileMemory;
     [ObservableProperty] private bool _formModePicker = true;
 
     [ObservableProperty] private string _formMatchRegex = string.Empty;
@@ -233,6 +243,8 @@ public partial class AgentsViewModel : ObservableObject
         foreach (var t in ToolOptions) t.IsSelected = false;
         FormRequireApproval = true;
         FormModePicker = true;
+        FormLongTermMemory = false;
+        FormFileMemory = false;
         FormMatchRegex = string.Empty;
         RefreshToolNames();
         FormToolName = NoToolChoice;
@@ -257,6 +269,8 @@ public partial class AgentsViewModel : ObservableObject
         foreach (var t in ToolOptions) t.IsSelected = a.Tools.Contains(t.Name, StringComparer.Ordinal);
         FormRequireApproval = a.RequireToolApproval;
         FormModePicker = a.EnableModePicker;
+        FormLongTermMemory = a.EnableLongTermMemory;
+        FormFileMemory = a.EnableFileMemory;
         FormMatchRegex = a.MatchRegex ?? string.Empty;
         RefreshToolNames();
         FormToolName = string.IsNullOrWhiteSpace(a.ToolName) ? NoToolChoice : a.ToolName;
@@ -334,6 +348,8 @@ public partial class AgentsViewModel : ObservableObject
             Tools = ToolOptions.Where(t => t.IsSelected).Select(t => t.Name).ToList(),
             RequireToolApproval = FormRequireApproval,
             EnableModePicker = FormModePicker,
+            EnableLongTermMemory = FormLongTermMemory,
+            EnableFileMemory = FormFileMemory,
             MatchRegex = string.IsNullOrWhiteSpace(FormMatchRegex) ? null : FormMatchRegex,
             ToolName = FormToolName == NoToolChoice ? null : FormToolName,
             ToolArgsTemplate = FormToolName == NoToolChoice ? null : FormToolArgs,
