@@ -20,6 +20,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Aether.AI.App\Aether.AI.App.csproj" />
+    <!-- 代码大脑的 Roslyn 编译器：**只在桌面 head 引用**（App 层只依赖纯抽象管线），
+         移动 head 不背 Roslyn/FCS——代码 agent 在移动端会明确报「未注册 C# 编译器」。 -->
+    <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Brains.Code.Compilation.CSharp\Aether.AI.Brains.Code.Compilation.CSharp.csproj" />
   </ItemGroup>
 
 </Project>

@@ -45,13 +45,15 @@ public class ChatViewModelIntegrationTests : IDisposable
             => Task.FromResult<ToolApprovalDecision?>(null);
     }
 
-    private static async Task<ChatViewModel> CreateChatAsync(string dataDir, IApprovalDialogService dialog)
+    /// <summary>demoAgents：挂上规则/审批演示 agent（本类用它们跑无 key 全链路——正常运行目录里没有）。</summary>
+    private static async Task<ChatViewModel> CreateChatAsync(string dataDir, IApprovalDialogService dialog,
+        bool demoAgents = true)
     {
         var provider = App.BuildProvider(dataDir, services =>
         {
             services.AddSingleton<IUiDispatcher>(new InlineDispatcher());
             services.AddSingleton<IApprovalDialogService>(dialog);
-        });
+        }, includeDemoAgents: demoAgents);
         var vm = provider.GetRequiredService<ChatViewModel>();
         await vm.InitializeAsync();
         return vm;

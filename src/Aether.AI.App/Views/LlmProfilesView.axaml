@@ -13,7 +13,7 @@
 
         <StackPanel Spacing="3">
           <TextBlock Text="LLM 连接档案" FontSize="16" FontWeight="SemiBold"/>
-          <TextBlock Text="选中的档案即「通用助手」用的模型——切换后下一轮对话生效，无需重启。密钥只存本机 llm-configs.json。"
+          <TextBlock Text="选中的档案 = 所有「跟随当前档案」的 agent（默认「通用助手」即是）用的模型——切换后下一轮对话生效，无需重启。密钥只存本机 llm-configs.json。"
                      FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
         </StackPanel>
 
@@ -22,9 +22,8 @@
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Grid.Column="0" Text="档案列表" FontSize="12" FontWeight="Medium"
                          VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}"/>
-              <Button Grid.Column="1" Command="{Binding NewConfigCommand}" Content="＋ 新增" Classes="ghost"
-                      FontSize="12" Margin="16,0,0,0"
-                      Foreground="{DynamicResource AccentBrush}"/>
+              <Button Grid.Column="1" Command="{Binding NewConfigCommand}" Content="＋ 新增" Classes="primary"
+                      FontSize="12" Margin="16,0,0,0" Padding="12,5" MinHeight="30"/>
             </Grid>
 
             <!-- 档案列表 -->
@@ -50,16 +49,16 @@
                         </TextBlock>
                       </StackPanel>
                       <Button Grid.Column="2" Command="{Binding SelectCommand}" CommandParameter="{Binding}"
-                              Content="设为当前" Classes="ghost" FontSize="11" IsVisible="{Binding !IsCurrent}"
+                              Content="设为当前" Classes="outline" FontSize="11" IsVisible="{Binding !IsCurrent}"
                               VerticalAlignment="Center"
                               Foreground="{DynamicResource AccentBrush}"/>
                       <Button Grid.Column="3" Command="{Binding EditCommand}" CommandParameter="{Binding}"
-                              Classes="ghost" Padding="6,4" VerticalAlignment="Center" ToolTip.Tip="编辑">
+                              Classes="outline" Padding="7,4" VerticalAlignment="Center" ToolTip.Tip="编辑">
                         <Path Data="{x:Static wb:Codicons.Edit}" Stretch="Uniform" Width="13" Height="13"
                               Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                       </Button>
                       <Button Grid.Column="4" Command="{Binding DeleteCommand}" CommandParameter="{Binding}"
-                              Classes="ghost" Padding="6,4" VerticalAlignment="Center" ToolTip.Tip="删除">
+                              Classes="outline danger" Padding="7,4" VerticalAlignment="Center" ToolTip.Tip="删除">
                         <Path Data="{x:Static wb:Codicons.Trash}" Stretch="Uniform" Width="13" Height="13"
                               Fill="{DynamicResource DangerBrush}"/>
                       </Button>

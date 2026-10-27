@@ -48,7 +48,7 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </Border>
-            <Button Classes="ghost" HorizontalAlignment="Left" Padding="10,6"
+            <Button Classes="outline" HorizontalAlignment="Left" Padding="10,6"
                     Command="{Binding Shell.ResetLayoutCommand}"
                     ToolTip.Tip="清除已保存的布局（分隔条位置 / 当前 tab），回到默认工作台">
               <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">

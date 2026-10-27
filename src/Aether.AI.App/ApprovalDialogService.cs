@@ -16,6 +16,7 @@ public sealed class ApprovalDialogService : IApprovalDialogService
         var owner = (Avalonia.Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
         if (owner is null) return null;
         var dialog = new ApprovalDialog(request);
+        AppDialogs.ApplyTheme(dialog);   // 模态窗要自己叠主题 token，否则卡片/按钮全是裸白
         var decision = await dialog.ShowDialog<ToolApprovalDecision?>(owner);
         return decision;
     }

@@ -2,6 +2,7 @@ using System.IO;
 using Aether.AI.App.Core;
 using Aether.AI.App.ViewModels;
 using Aether.AI.App.Views;
+using Aether.AI.Brains.Code.Compilation;
 using Aether.AI.Brains.Llm;
 using Aether.AI.Brains.Rule;
 using Aether.AI.Core.Agents;
@@ -17,6 +18,9 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Aether.AI.App;
 
@@ -36,6 +40,13 @@ public partial class App : Application
     /// <summary>移动组合根（ChatView 的齿轮入口经此解析 SettingsViewModel 等服务）。桌面为 null。</summary>
     public static IServiceProvider? MobileProvider { get; private set; }
 
+    /// <summary>
+    /// head 专属 DI 注入点（在 <see cref="BuildProvider"/> 的 configure 之后执行）。
+    /// 桌面 head 用它注册 <c>AddCSharpBrainCompilation()</c>——Roslyn 编译器只进桌面闭包，
+    /// 移动端保持轻量（代码大脑在移动端会明确报「未注册 C# 编译器」）。
+    /// </summary>
+    public static Action<IServiceCollection>? ServicesConfigure { get; set; }
+
     /// <summary>启动参数（iOS/Android head 的 Main/OnCreate 转存——移动 lifetime 不暴露 Args）。
     /// --demo：自动跑规则演示 + 审批演示（模拟器验收免点按注入）。</summary>
     public static string[] LaunchArguments { get; set; } = Array.Empty<string>();
@@ -49,7 +60,8 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var provider = BuildProvider();
+            // 演示 agent 只在演示启动里挂（桌面一般不用，留 --demo 口径一致）
+            var provider = BuildProvider(includeDemoAgents: desktop.Args?.Contains("--demo") == true);
             WorkbenchServices.Attach(provider);   // ⑩ 视图层（WorkspaceView code-behind）经此解析 IViewRegistry 等
 
             var shell = provider.GetRequiredService<WorkbenchShellViewModel>();
@@ -78,7 +90,10 @@ public partial class App : Application
     /// <summary>移动根视图：同一份 ChatView + ⑩ 主题 overlay 叠加在根（资源沿树解析，子树全生效）。</summary>
     private static (IServiceProvider Provider, UserControl Root) BuildMobileRoot()
     {
-        var provider = BuildProvider();
+        // --demo/--demo-llm 才挂规则/审批演示 agent；正常启动只有用户自己的 agent。
+        var demo = LaunchArguments.Contains("--demo", StringComparer.OrdinalIgnoreCase)
+                   || LaunchArguments.Contains("--demo-llm", StringComparer.OrdinalIgnoreCase);
+        var provider = BuildProvider(includeDemoAgents: demo);
         MobileProvider = provider;
         var vm = provider.GetRequiredService<ChatViewModel>();
         var root = new ChatView { DataContext = vm };
@@ -146,7 +161,7 @@ public partial class App : Application
         WorkbenchShellViewModel shell)
     {
         await Task.Delay(2500);
-        var tabs = new[] { "chat", "agents", "settings" };
+        var tabs = new[] { "chat", "settings" };   // nav 只剩两项（Agents 已改为 agent 下拉里的管理弹窗）
         foreach (var (w, h) in new[] { (1280.0, 820.0), (900.0, 600.0), (1792.0, 997.0) })
         {
             window.Width = w;
@@ -181,15 +196,17 @@ public partial class App : Application
         desktop.Shutdown();
     }
 
-    /// <summary>组合 DI 容器。configure：测试注入口（最后执行——可覆盖任何默认注册，如假审批框/内联 dispatcher）。</summary>
-    public static IServiceProvider BuildProvider(string? dataDirectory = null, Action<IServiceCollection>? configure = null)
+    /// <summary>组合 DI 容器。configure：测试注入口（最后执行——可覆盖任何默认注册，如假审批框/内联 dispatcher）。
+    /// includeDemoAgents：把规则/审批演示挂进目录——只给 <c>--smoke</c>（无头）与 <c>--demo</c>（移动验收）用。</summary>
+    public static IServiceProvider BuildProvider(string? dataDirectory = null, Action<IServiceCollection>? configure = null,
+        bool includeDemoAgents = false)
     {
         var dataDir = dataDirectory ?? ResolveDataDirectory();
         Directory.CreateDirectory(dataDir);
 
         var services = new ServiceCollection();
 
-        // —— ⑩ 布局引擎：工作台（nav rail = chat / agents；settings 走 rail 左下角齿轮入口）——
+        // —— ⑩ 布局引擎：工作台（nav rail = chat；settings 走 rail 左下角齿轮入口）——
         services.AddSingleton<Aether.Workbench.IPreferencesStore>(
             new JsonPreferencesStore(Path.Combine(dataDir, "preferences.json")));
         services.AddWorkbench(DesktopWorkspace.Definition);
@@ -201,6 +218,20 @@ public partial class App : Application
         // 设置页换选中档案 → factory 清缓存 + runner.Invalidate → 下一轮即换模型。
         var llmPath = Path.Combine(dataDir, "llm-configs.json");
         services.AddSingleton(new LlmConfigState(llmPath));
+        // agent 目录唯一来源：agents.json（保存即经下面的 DynamicAgents 进目录，聊天下拉热刷新）。
+        // 没有「内置只读 agent」这一档了——首次运行把「通用助手」播种成一条普通记录，
+        // 之后它与用户自建的 agent 完全同权（可编辑、可删除，删了不会被复活）。
+        var agentStore = new CustomAgentStore(Path.Combine(dataDir, "agents.json"));
+        agentStore.SeedIfMissing(new[] { CustomAgentStore.FromLlmDefinition(DefaultAgents.LlmAssistant()) });
+        services.AddSingleton(agentStore);
+        // 日志：本 App 只引 Logging.Abstractions（不引完整 Logging）——编译服务等组件的 ILogger<T>
+        // 给一个空实现即可（无输出、无副作用）。
+        services.TryAddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        // 代码大脑：⑫ 的「源码 → 编译 → 注册」管线（ICodeCompilationService + CodeBrainFactory）。
+        // 编译器本身（Roslyn）由**桌面 head** 经 ServicesConfigure 注入——移动闭包不背 Roslyn。
+        // AgentCodeNoteSource 把 agents.json 里的代码 agent 一条条喂给编译管线。
+        services.AddCodeCompilation();
+        services.AddSingleton<ICodeNoteSource, AgentCodeNoteSource>();
         services.AddSingleton<AppLlmClientFactory>();
         services.AddSingleton<Aether.AI.Brains.Abstractions.IChatClientFactory>(sp => sp.GetRequiredService<AppLlmClientFactory>());
         services.AddLlmBrainFactory();
@@ -216,10 +247,11 @@ public partial class App : Application
         services.AddAetherAiApp(o =>
         {
             o.DataDirectory = dataDir;
-            // 动态源：有 LLM 档案才挂「通用助手」（ModelId 空 = 走当前选中档案）。
-            o.DynamicAgents = sp => sp.GetRequiredService<LlmConfigState>().HasConfigs
-                ? new[] { DefaultAgents.LlmAssistant() }
-                : Array.Empty<AgentDefinition>();
+            o.IncludeDemoAgents = includeDemoAgents;
+            // 动态源（每次枚举求值）：agents.json 里的全部 agent（含首次运行播种的「通用助手」，
+            // ModelId 空 = 走当前选中档案）——保存/删除后不重启即反映到聊天下拉。
+            o.DynamicAgents = sp =>
+                sp.GetRequiredService<CustomAgentStore>().Agents.Select(CustomAgentStore.ToDefinition);
         });
 
         // —— App 服务：UI 端口实现（按形态取舍）+ VM ——
@@ -237,9 +269,18 @@ public partial class App : Application
         }
         services.AddSingleton<ChatViewModel>();
         services.AddSingleton<SettingsViewModel>();
+        services.AddSingleton<AgentsViewModel>();   // agent 管理窗（聊天顶部下拉末项「管理 agent…」进入）
 
         configure?.Invoke(services);
-        return services.BuildServiceProvider();
+        ServicesConfigure?.Invoke(services);   // head 专属注入（桌面：AddCSharpBrainCompilation —— Roslyn）
+        var provider = services.BuildServiceProvider();
+
+        // 代码大脑：启动编译一轮 + agents.json 一变就重编译（Reload 自带 500ms 去抖、跑在后台线程，
+        // 不占 UI 线程；编译结果经 ICodeCompilationService.Loaded 广播给管理窗刷新错误）。
+        var compilation = provider.GetRequiredService<ICodeCompilationService>();
+        provider.GetRequiredService<CustomAgentStore>().Changed += compilation.Reload;
+        compilation.Reload();
+        return provider;
     }
 
     /// <summary>

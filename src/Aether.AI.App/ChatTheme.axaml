@@ -67,7 +67,9 @@
     <Setter Property="VerticalAlignment" Value="Center"/>
   </Style>
 
-  <!-- 幽灵按钮（透明底、hover 才有背景） -->
+  <!-- 幽灵按钮（透明底、hover 才有背景）：**只用在栏位图标**（聊天头部那一排）。
+       卡片里的「新建 / 编辑 / 删除」不要用它——透明底落在卡片上等于静止态看不见，
+       只有鼠标移上去才冒出来（用户反馈的“看不到删除和新建”就是这条）。那种场合用 Button.outline。 -->
   <Style Selector="Button.ghost">
     <Setter Property="Background" Value="Transparent"/>
     <Setter Property="BorderThickness" Value="0"/>
@@ -75,6 +77,23 @@
   </Style>
   <Style Selector="Button.ghost:pointerover">
     <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}"/>
+  </Style>
+
+  <!-- 卡片内动作按钮：静止态就有「浅底 + 描边」，不靠 hover 才可见 -->
+  <Style Selector="Button.outline">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="10,4"/>
+  </Style>
+  <Style Selector="Button.outline:pointerover">
+    <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}"/>
+  </Style>
+  <!-- 危险动作（删除）：描边走危色，图标同色 -->
+  <Style Selector="Button.outline.danger">
+    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
   </Style>
 
   <!-- LLM 档案 chip（输入卡上方的模型快速切换行）：幽灵形 + 当前档案 accent 高亮 -->

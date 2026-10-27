@@ -6,7 +6,13 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Aether.AI.App.Core;
 
-/// <summary>M1 内置 agent 定义（宿主可经 <see cref="AetherAppOptions.Agents"/> 追加/覆盖同 Id 项）。</summary>
+/// <summary>
+/// 出厂 agent 定义。目录里**没有「内置/只读」这一档**了：真正常驻聊天的只有
+/// <see cref="LlmAssistant"/>，且它由宿主在首次运行时落成 agents.json 里的一条普通记录
+/// （可编辑、可删除，见 <c>CustomAgentStore.SeedIfMissing</c>）。下面两个演示定义只在
+/// <see cref="AetherAppOptions.IncludeDemoAgents"/> 打开时（<c>--smoke</c> / <c>--demo</c>）进目录，
+/// 正常运行不出现。
+/// </summary>
 public static class DefaultAgents
 {
     /// <summary>规则演示：BrainMatrix 同构——「查600000 → Echo 工具 → done:echo:600000」，无 key 全链路。</summary>
@@ -65,11 +71,12 @@ public static class DefaultAgents
     };
 
     /// <summary>LLM 助手：ModelId 留空 = 动态走宿主 IChatClientFactory 的**当前选中档案**（设置页切换即换，无需改定义）。
-    /// 工具开 todo provider + 审批（Mode 选择器启用）。</summary>
+    /// 工具开 todo provider + 审批（Mode 选择器启用）。这是首次运行时落进 agents.json 的那条「通用助手」的初值。</summary>
     public static AgentDefinition LlmAssistant() => new()
     {
         Id = "assistant",
         Name = "通用助手",
+        Description = "默认助手：跟随当前模型档案，提示词/工具/审批都能改",
         Instructions = "你是 Aether 助手。回答简洁、准确；需要时使用工具。",
         ModelId = string.Empty,
         Memory = AgentMemoryMode.SlidingWindow,
@@ -88,8 +95,12 @@ public sealed class AetherAppOptions
     /// <summary>内置 agent 之外宿主追加的定义（静态）。</summary>
     public IReadOnlyList<AgentDefinition> Agents { get; set; } = Array.Empty<AgentDefinition>();
 
-    /// <summary>动态 agent 源（每次枚举求值）：如「有 LLM 档案才挂通用助手」。与 <see cref="Agents"/> 合并（同 Id 宿主胜出）。</summary>
+    /// <summary>动态 agent 源（每次枚举求值）：用户 agents.json 里的全部 agent。与 <see cref="Agents"/> 合并（同 Id 宿主胜出）。</summary>
     public Func<IServiceProvider, IEnumerable<AgentDefinition>>? DynamicAgents { get; set; }
+
+    /// <summary>把 <c>DefaultAgents.RuleDemo/ApprovalDemo</c> 也挂进目录——只给无头冒烟（<c>--smoke</c>）
+    /// 与移动演示（<c>--demo</c>）用；正常运行时为 false，目录里只有用户自己的 agent。</summary>
+    public bool IncludeDemoAgents { get; set; }
 }
 
 /// <summary>
@@ -111,20 +122,24 @@ public static class AetherAppComposition
         services.AddSingleton<IMemoryStore>(_ => SqliteMemoryStore.ForFile(dbPath));
         services.AddSingleton<IConversationStore>(_ => SqliteConversationStore.ForFile(dbPath));
 
-        // agent 目录：内置 + 宿主静态 + 宿主动态源（每次枚举求值——LLM 助手随档案存亡），
-        // 同 Id 去重宿主定义胜出。
+        // agent 目录：宿主静态 + 宿主动态源（每次枚举求值——agents.json 改完不重启即生效）
+        // + 演示 agent（仅 --smoke/--demo），同 Id 去重宿主定义胜出。
         services.AddSingleton<IAgentCatalog>(sp => new BuiltInAgentCatalog(() =>
-            MergeAgents(options.Agents.Concat(options.DynamicAgents?.Invoke(sp) ?? Enumerable.Empty<AgentDefinition>()))));
+            MergeAgents(
+                options.Agents.Concat(options.DynamicAgents?.Invoke(sp) ?? Enumerable.Empty<AgentDefinition>()),
+                options.IncludeDemoAgents)));
         services.AddSingleton<IAgentRunner, AgentRunner>();
         services.AddSingleton<ChatTranscriptPersister>();
         services.AddSingleton<ConversationHistoryLoader>();
         return services;
     }
 
-    private static IEnumerable<AgentDefinition> MergeAgents(IEnumerable<AgentDefinition> extra)
+    private static IEnumerable<AgentDefinition> MergeAgents(IEnumerable<AgentDefinition> extra, bool includeDemoAgents)
     {
-        var builtin = new List<AgentDefinition> { DefaultAgents.RuleDemo(), DefaultAgents.ApprovalDemo() };
-        return extra.Concat(builtin)
+        var rest = includeDemoAgents
+            ? new[] { DefaultAgents.RuleDemo(), DefaultAgents.ApprovalDemo() }
+            : Array.Empty<AgentDefinition>();
+        return extra.Concat(rest)
             .GroupBy(a => a.Id, StringComparer.Ordinal)
             .Select(g => g.First());
     }

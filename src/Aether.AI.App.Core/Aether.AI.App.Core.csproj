@@ -19,6 +19,9 @@
          大脑实现的取舍（Rule/LLM/编译）留在组合根（App 层）——Core 只认 HarnessRuntime。 -->
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Hosting\Aether.AI.Hosting.csproj" />
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Memory.Sqlite\Aether.AI.Memory.Sqlite.csproj" />
+    <!-- 代码大脑的编译管线契约（CodeNote/ICodeCompilationService——纯抽象，本层不带 Roslyn）。
+         Roslyn 编译器只在桌面 head 注册，移动闭包保持干净。 -->
+    <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Brains.Code.Compilation\Aether.AI.Brains.Code.Compilation.csproj" />
   </ItemGroup>
 
 </Project>

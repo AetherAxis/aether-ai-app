@@ -25,9 +25,9 @@ public partial class ChatView : UserControl
         var isDesktop = Avalonia.Application.Current?.ApplicationLifetime
             is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
         SettingsGearButton.IsVisible = !isDesktop;
-        // 模型下拉的「管理模型…」项 → 打开配置窗（View/VM 分工：VM 只发意图，宿主决定形态）
-        DataContextChanged += (_, _) => HookModelManage();
-        HookModelManage();
+        // 下拉里的「管理…」项 → 打开对应管理窗（View/VM 分工：VM 只发意图，宿主决定形态）
+        DataContextChanged += (_, _) => HookVmEvents();
+        HookVmEvents();
         if (App.MobileApproval is { } broker)
         {
             broker.Requested += OnApprovalRequested;
@@ -35,15 +35,26 @@ public partial class ChatView : UserControl
         }
     }
 
-    private void HookModelManage()
+    private void HookVmEvents()
     {
-        if (_hookedVm is not null) _hookedVm.ManageLlmRequested -= OnManageLlmRequested;
+        if (_hookedVm is not null)
+        {
+            _hookedVm.ManageLlmRequested -= OnManageLlmRequested;
+            _hookedVm.ManageAgentsRequested -= OnManageAgentsRequested;
+        }
         _hookedVm = DataContext as ViewModels.ChatViewModel;
-        if (_hookedVm is not null) _hookedVm.ManageLlmRequested += OnManageLlmRequested;
+        if (_hookedVm is not null)
+        {
+            _hookedVm.ManageLlmRequested += OnManageLlmRequested;
+            _hookedVm.ManageAgentsRequested += OnManageAgentsRequested;
+        }
     }
 
-    /// <summary>下拉里选中「管理模型…」→ 开配置窗。延到下一帧：先让下拉浮层收起，再弹窗，避免抢焦点。</summary>
+    /// <summary>下拉里选中「管理模型…」/「管理 agent…」→ 开对应窗口。
+    /// 延到下一帧：先让下拉浮层收起，再弹窗，避免抢焦点。</summary>
     private void OnManageLlmRequested() => Dispatcher.UIThread.Post(ShowModelSettings);
+
+    private void OnManageAgentsRequested() => Dispatcher.UIThread.Post(ShowAgentManager);
 
     // —— 模型设置浮层（移动形态）——
 
@@ -80,11 +91,44 @@ public partial class ChatView : UserControl
                 Width = 760, Height = 680, MinWidth = 560, MinHeight = 520,
                 WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.CenterOwner,
             };
+            Aether.AI.App.AppDialogs.ApplyTheme(dialog);   // 模态窗不继承工作台的主题 token（见 AppDialogs 注释）
             _ = dialog.ShowDialog(desktop.MainWindow);
             return;
         }
         OpenModelOverlay();   // 移动形态：内嵌浮层
     }
+
+    // —— agent 管理（顶部 agent 下拉的「管理 agent…」项，2026-10-26）——
+    // 与模型设置同款范式：桌面 = 模态窗，移动 = 内嵌浮层，两端宿同一份 AgentsView/AgentsViewModel。
+
+    private void ShowAgentManager()
+    {
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            var vm = Aether.Workbench.WorkbenchServices.GetService<ViewModels.AgentsViewModel>()
+                ?? App.MobileProvider?.GetRequiredService<ViewModels.AgentsViewModel>();
+            if (vm is null || desktop.MainWindow is null) return;
+            var dialog = new Avalonia.Controls.Window
+            {
+                Title = "Agents",
+                Content = new AgentsView { DataContext = vm },
+                // 880x780：够放「agent 列表 + 完整表单（LLM/规则两套字段）」，尽量不滚。
+                Width = 880, Height = 780, MinWidth = 640, MinHeight = 520,
+                WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.CenterOwner,
+            };
+            Aether.AI.App.AppDialogs.ApplyTheme(dialog);
+            _ = dialog.ShowDialog(desktop.MainWindow);
+            return;
+        }
+
+        if (MobileAgentsView.DataContext is null && App.MobileProvider is { } provider)
+            MobileAgentsView.DataContext = provider.GetRequiredService<ViewModels.AgentsViewModel>();
+        AgentManagerOverlay.IsVisible = true;
+    }
+
+    private void OnAgentManagerClose(object? sender, RoutedEventArgs e)
+        => AgentManagerOverlay.IsVisible = false;
 
     // —— 审批 bottom sheet（移动形态） ——
 

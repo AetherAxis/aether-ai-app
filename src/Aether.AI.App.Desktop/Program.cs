@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using Aether.AI.App;
 using Aether.AI.App.Core;
+using Aether.AI.Brains.Code.Compilation.CSharp;
 using Aether.AI.Core.Agents;
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +15,10 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // 代码大脑只在桌面形态可编译执行：把 Roslyn 编译器注入共享组合根（App.BuildProvider）。
+        // 移动 head 不引本程序集，也就没有编译器——代码 agent 会明确回「未注册 C# 编译器」。
+        App.ServicesConfigure = services => services.AddCSharpBrainCompilation();
+
         // 无头冒烟：与 GUI 完全同一条 DI 组合链（App.BuildProvider），跑规则大脑全链路 + 审批自恢复轮。
         // exit 0 = 通过——CI / 命令行验收用（L2 的无 GUI 等价物）。
         if (args.Contains("--smoke"))
@@ -54,7 +59,8 @@ internal static class Program
         var ok = true;
         try
         {
-            var provider = App.BuildProvider(dir);
+            // 演示 agent（规则演示 / 审批演示）只在冒烟/演示路径挂，正常运行目录里只有用户自己的 agent。
+            var provider = App.BuildProvider(dir, includeDemoAgents: true);
             var runner = provider.GetRequiredService<IAgentRunner>();
 
             var full1 = await runner.RunInteractiveAsync(Guid.NewGuid(), "rule-demo", "查600000");
@@ -97,13 +103,25 @@ internal static class Program
             return;
         }
 
+        // 「通用助手」是首次运行播种的普通 agent——用户可能删了或改名；没有就用目录里任意 LLM agent。
+        var catalog = provider.GetRequiredService<IAgentCatalog>();
+        var agents = await catalog.GetAllAsync();
+        var target = agents.FirstOrDefault(a => a.Id == "assistant")
+                     ?? agents.FirstOrDefault(a => a.Engine == EngineKind.Llm);
+        if (target is null)
+        {
+            Console.WriteLine("[llm-smoke] SKIP：目录里没有 LLM agent（先在 agent 管理窗新建一个）");
+            Environment.ExitCode = 0;
+            return;
+        }
+
         var runner = provider.GetRequiredService<Aether.AI.App.Core.IAgentRunner>();
         var tokens = 0;
         var reasoning = 0;
         var usage = "";
         try
         {
-            var full = await runner.RunInteractiveAsync(Guid.NewGuid(), "assistant",
+            var full = await runner.RunInteractiveAsync(Guid.NewGuid(), target.Id,
                 "用一句话自我介绍，然后说出 2+2 等于几。",
                 handlers: new Aether.AI.Core.Agents.StreamHandlers(
                     OnToken: (t, _) => { tokens++; return Task.CompletedTask; },

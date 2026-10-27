@@ -5,8 +5,8 @@ using Xunit;
 namespace Aether.AI.App.Tests;
 
 /// <summary>
-/// LLM 档案状态与动态 agent 目录：有档案 → 「通用助手」出现在目录（每次枚举求值）；
-/// 选中切换/保存 → Changed 广播；持久化往返。
+/// LLM 档案状态与 agent 目录：档案 CRUD 持久化/切换广播；
+/// 「通用助手」由首次运行播种进 agents.json（普通 agent，与档案存亡无关）。
 /// </summary>
 public class LlmConfigStateTests : IDisposable
 {
@@ -57,22 +57,36 @@ public class LlmConfigStateTests : IDisposable
         Assert.Equal(1, changed);
     }
 
-    /// <summary>动态目录：无档案时无「通用助手」；保存档案后（不重启、不重建 provider）即出现。</summary>
+    /// <summary>目录唯一来源是 agents.json：首次运行播种的「通用助手」是一条普通 agent——
+    /// 不再随 LLM 档案存亡（无档案也在，只是跑起来会提示先配模型），档案增删也不影响它。</summary>
     [Fact]
-    public async Task Catalog_gains_llm_assistant_when_config_saved()
+    public async Task Catalog_holds_seeded_assistant_as_a_normal_agent()
     {
         var provider = App.BuildProvider(_dataDir);
         var catalog = provider.GetRequiredService<IAgentCatalog>();
         var state = provider.GetRequiredService<LlmConfigState>();
 
-        var before = await catalog.GetAllAsync();
-        Assert.DoesNotContain(before, a => a.Id == "assistant");   // 无档案 → 只有规则/审批演示
+        var assistant = Assert.Single(await catalog.GetAllAsync());
+        Assert.Equal("assistant", assistant.Id);
+        Assert.Equal(string.Empty, assistant.ModelId);   // 空 = 走当前选中档案
 
         state.Save(new[] { new LlmConfig("GLM", null, "sk-x", "glm-4.7") }, "GLM");
+        Assert.Single(await catalog.GetAllAsync(), a => a.Id == "assistant");   // 有档案也不重复
+    }
 
-        var after = await catalog.GetAllAsync();
-        var assistant = Assert.Single(after, a => a.Id == "assistant");
-        Assert.Equal(string.Empty, assistant.ModelId);   // 空 = 动态走当前选中档案
+    /// <summary>「通用助手」与自建 agent 同权：删掉后重启不复活（agents.json 存在即尊重用户）。</summary>
+    [Fact]
+    public void Deleted_assistant_is_not_resurrected_on_restart()
+    {
+        var provider = App.BuildProvider(_dataDir);
+        var store = provider.GetRequiredService<CustomAgentStore>();
+        Assert.Single(store.Agents);
+        store.Save(Array.Empty<CustomAgent>());
+
+        // 新实例 + 同一条播种逻辑（模拟重启）：文件已存在 → 不插手
+        var reopened = new CustomAgentStore(Path.Combine(_dataDir, "agents.json"));
+        Assert.False(reopened.SeedIfMissing(new[] { CustomAgentStore.FromLlmDefinition(DefaultAgents.LlmAssistant()) }));
+        Assert.Empty(reopened.Agents);
     }
 
     /// <summary>工厂：离线构造（无网络）——选中档案决定客户端；切换后拿到新实例（缓存已清）。</summary>
