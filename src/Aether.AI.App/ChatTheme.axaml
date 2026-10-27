@@ -155,4 +155,38 @@
     <Setter Property="MinHeight" Value="44"/>
   </Style>
 
+  <!-- 判定徽章（应用审查页）：博彩=危险色、非博彩=成功色、不确定=强调色描边、未判定=灰。
+       用 Classes 组合（badge + gambling/clean/uncertain），行模板里只绑布尔，避免在 XAML 里写三元。 -->
+  <Style Selector="Border.badge">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Padding" Value="8,2"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Border.badge > TextBlock">
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+  </Style>
+  <Style Selector="Border.badge.gambling">
+    <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
+  </Style>
+  <Style Selector="Border.badge.gambling > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource OnDangerBrush}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Border.badge.clean">
+    <Setter Property="Background" Value="{DynamicResource SuccessBrush}"/>
+  </Style>
+  <Style Selector="Border.badge.clean > TextBlock">
+    <Setter Property="Foreground" Value="White"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Border.badge.uncertain">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+  <Style Selector="Border.badge.uncertain > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+  </Style>
 </Styles>

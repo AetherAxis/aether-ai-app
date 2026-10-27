@@ -6,11 +6,12 @@ namespace Aether.AI.App;
 public static class PanelKeys
 {
     public const string Chat = "chat";
+    public const string AppAudit = "app-audit";
     public const string Settings = "settings";
 }
 
 /// <summary>
-/// App 的默认工作台：nav rail 只剩「聊天」；设置走 rail 底部齿轮入口
+/// App 的默认工作台：nav rail = 「聊天」+「应用审查」；设置走 rail 底部齿轮入口
 /// （<see cref="WorkspaceDefinition.FooterPanelKey"/>，承载主题/重置布局）。
 /// <para>2026-10-26：**Agents 不再是 nav 页**——自定义大脑与「模型档案」同款范式：
 /// 聊天顶部 agent 下拉末项「管理 agent…」→ 模态窗（AgentsView）。配了自定义 agent 的用户
@@ -24,8 +25,10 @@ public static class DesktopWorkspace
         Panels: new List<PanelDescriptor>
         {
             new(PanelKeys.Chat, PanelKeys.Chat, "聊天", "chat"),
+            // 应用审查：Chrome 网页应用名 → 反查站点 → 判定博彩与否（独立 nav 页，桌面/数据两端同源）
+            new(PanelKeys.AppAudit, PanelKeys.AppAudit, "应用审查", "activity"),
             new(PanelKeys.Settings, PanelKeys.Settings, "设置", "settings"),
         },
-        Layout: new LayoutTabbed(new[] { PanelKeys.Chat, PanelKeys.Settings }),
+        Layout: new LayoutTabbed(new[] { PanelKeys.Chat, PanelKeys.AppAudit, PanelKeys.Settings }),
         FooterPanelKey: PanelKeys.Settings);
 }

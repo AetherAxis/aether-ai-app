@@ -13,20 +13,14 @@
   <!-- Panel 根：聊天内容 + 审批 bottom sheet 叠加层（移动形态激活——App.MobileApproval broker 驱动；桌面休眠） -->
   <Panel>
   <DockPanel>
-    <!-- 头部：当前助手（只读）/ token 用量 / 历史会话 / 新聊天 / 设置（齿轮，仅移动形态显示）
-         **助手选择器已下移到输入卡**（与模型选择并排——「跟谁聊 / 用哪个模型」放一处更主流）；
-         这里只显示"我在跟谁聊"，不重复给一个下拉。 -->
+    <!-- 头部：token 用量 / 历史会话 / 新聊天 / 设置（齿轮，仅移动形态显示）
+         **助手选择器已下移到输入卡**（与模型选择并排——「跟谁聊 / 用哪个模型」放一处更主流）。
+         左上**不放当前助手名**：它就在下方输入栏的下拉里显示着，重复一遍只是噪音。 -->
     <Border DockPanel.Dock="Top" Classes="pane-head" Padding="16,0" Background="{DynamicResource CardBgBrush}"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
       <Grid ColumnDefinitions="*,Auto,Auto,Auto">
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-          <TextBlock Text="{Binding SelectedAgentTarget.DisplayIcon}" FontSize="12" VerticalAlignment="Center"/>
-          <TextBlock Text="{Binding SelectedAgentTarget.Name}" FontSize="13" FontWeight="SemiBold"
-                     VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}"
-                     TextTrimming="CharacterEllipsis"/>
-          <TextBlock Text="{Binding TokenInfo}" VerticalAlignment="Center" FontSize="11" Margin="10,0,0,0"
-                     Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
-        </StackPanel>
+        <TextBlock Grid.Column="0" Text="{Binding TokenInfo}" VerticalAlignment="Center" FontSize="11"
+                   Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
         <!-- 历史会话（Flyout 下拉） -->
         <Button Grid.Column="1" x:Name="HistoryFlyoutButton" Classes="ghost" Padding="8,4" FontSize="12" ToolTip.Tip="历史会话"
                 VerticalAlignment="Center">
@@ -359,6 +353,10 @@
                     ToolTip.Tip="技能包 / 连接器 / 链上钱包">
               <TextBlock Text="能力" FontSize="13" VerticalAlignment="Center"/>
             </Button>
+            <Button x:Name="AuditTabButton" Click="OnAuditTab" Classes="ghost" Padding="10,6"
+                    ToolTip.Tip="应用审查（网页应用名 → 站点 → 博彩判定）">
+              <TextBlock Text="审查" FontSize="13" VerticalAlignment="Center"/>
+            </Button>
           </StackPanel>
           <Button Grid.Column="2" Click="OnSettingsClose" Classes="ghost" Padding="10,6" ToolTip.Tip="返回聊天">
             <Path Data="{x:Static wb:Codicons.ChromeClose}" Stretch="Uniform" Width="14" Height="14"
@@ -374,6 +372,9 @@
             <views:CapabilitiesView x:Name="MobileCapabilitiesView"/>
           </Border>
         </ScrollViewer>
+        <!-- 应用审查：与桌面 nav rail 那一页**同一个控件**（它自带滚动，这里不再套 ScrollViewer）。
+             审查记录落 <dataDir>/app-audit.json，所以手机上看到的就是桌面上跑出来的那批结论。 -->
+        <views:AppAuditView x:Name="MobileAuditView" IsVisible="False"/>
       </Panel>
     </DockPanel>
   </Border>

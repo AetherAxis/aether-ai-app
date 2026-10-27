@@ -1,6 +1,7 @@
 using System.IO;
 using Aether.AI.Abstractions;
 using Aether.AI.App.Core;
+using Aether.AppAudit.AI;
 using Aether.AI.App.ViewModels;
 using Aether.AI.App.Views;
 using Aether.AI.Brains.Code.Compilation;
@@ -181,7 +182,7 @@ public partial class App : Application
         WorkbenchShellViewModel shell)
     {
         await Task.Delay(2500);
-        var tabs = new[] { "chat", "settings" };   // nav 只剩两项（Agents 已改为 agent 下拉里的管理弹窗）
+        var tabs = new[] { "chat", "app-audit", "settings" };   // 与 DesktopWorkspace.LayoutTabbed 的页签顺序一致
         foreach (var (w, h) in new[] { (1280.0, 820.0), (900.0, 600.0), (1792.0, 997.0) })
         {
             window.Width = w;
@@ -285,7 +286,7 @@ public partial class App : Application
         // 手机端被裁掉的 server 连连接尝试都不发生，配置文件原样留在盘上给桌面用。
         aether.AddMcpServersFromDirectory(capabilities.McpServersDirectory,
             filter: cfg => AiCapabilityPolicy.SupportsMcpServer(cfg, isDesktop));
-        // ⑭ 系统工具 15 个（文件/搜索/HTTP/命令）——手机桌面同一份注册代码，差别只有命令类：
+        // ⑭ 系统工具 16 个（文件/检索/HTTP/WebSearch/命令）——手机桌面同一份注册代码，差别只有命令类：
         // iOS 沙盒禁止 fork，`ExecuteCommand`/`ExecuteShellCommand` 在手机端连注册都跳过
         // （文件/搜索/FetchUrl 是纯托管 + 网络，两端同源可用）。
         aether.AddSystemTools(includeCommandTools: isDesktop);
@@ -331,9 +332,18 @@ public partial class App : Application
             MobileApproval = new MobileApprovalService();
             services.AddSingleton<IApprovalDialogService>(MobileApproval);
         }
+        // —— 应用审查（**只发布任务**；判定由 agent 做，页面只显示结论）——
+        // 领域模块在 ⑭（Aether.AppAudit.AI）：数据模型 / 落盘 / 任务板 / 判定口径 skill / agent 工具
+        // 全在那边，本仓只留这页的 View + VM。AddAppAuditTools 顺手把 skill 种进 skills 目录
+        // （agent 会自动加载；改口径改 Markdown，不用重编译）。
+        services.AddSingleton<AppAuditViewModel>();
+
         services.AddSingleton<ChatViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AgentsViewModel>();   // agent 管理窗（聊天顶部下拉末项「管理 agent…」进入）
+
+        // ⑭ 应用审查集成模块：注册 store/service/工具（三个工具都不含判定逻辑）。
+        aether.AddAppAuditTools(dataDir, capabilities.SkillsDirectory);
 
         configure?.Invoke(services);
         ServicesConfigure?.Invoke(services);   // head 专属注入（桌面：AddCSharpBrainCompilation —— Roslyn）

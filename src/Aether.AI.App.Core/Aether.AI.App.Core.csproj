@@ -10,6 +10,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- 解析类纯函数（SiteSearch.ParseBing 等）留 internal：它们是实现细节，
+         但要能被测试直接喂一段真实形状的 HTML 验回归。 -->
+    <InternalsVisibleTo Include="Aether.AI.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>

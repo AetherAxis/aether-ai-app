@@ -64,27 +64,38 @@ public partial class ChatView : UserControl
     {
         // 同一份 LlmProfilesView / CapabilitiesView / SettingsViewModel（移动组合根解析）；首次打开时接 DataContext。
         // 能力页（技能包/连接器/链上钱包）在手机上**只能**从这里进——桌面走 rail 左下角齿轮的设置页。
-        if (App.MobileProvider is { } provider && MobileLlmView.DataContext is null)
+        if (App.MobileProvider is { } provider)
         {
-            var vm = provider.GetRequiredService<ViewModels.SettingsViewModel>();
-            MobileLlmView.DataContext = vm;
-            MobileCapabilitiesView.DataContext = vm;
+            if (MobileLlmView.DataContext is null)
+            {
+                var vm = provider.GetRequiredService<ViewModels.SettingsViewModel>();
+                MobileLlmView.DataContext = vm;
+                MobileCapabilitiesView.DataContext = vm;
+            }
+            if (MobileAuditView.DataContext is null)
+                MobileAuditView.DataContext = provider.GetRequiredService<ViewModels.AppAuditViewModel>();
         }
-        ShowCapabilitiesTab(false);   // 每次打开回到「模型」页（能力页是深链，不抢默认入口）
+        ShowSettingsSection(SettingsSection.Llm);   // 每次打开回到「模型」页（其余是深链，不抢默认入口）
         ModelSettingsOverlay.IsVisible = true;
     }
 
-    private void OnLlmTab(object? sender, RoutedEventArgs e) => ShowCapabilitiesTab(false);
+    private enum SettingsSection { Llm, Capabilities, Audit }
 
-    private void OnCapabilitiesTab(object? sender, RoutedEventArgs e) => ShowCapabilitiesTab(true);
+    private void OnLlmTab(object? sender, RoutedEventArgs e) => ShowSettingsSection(SettingsSection.Llm);
 
-    /// <summary>页签切换：两个视图同一 DataContext，只是换谁可见（不做控件重建，滚动位置/输入框内容都保留）。</summary>
-    private void ShowCapabilitiesTab(bool capabilities)
+    private void OnCapabilitiesTab(object? sender, RoutedEventArgs e) => ShowSettingsSection(SettingsSection.Capabilities);
+
+    private void OnAuditTab(object? sender, RoutedEventArgs e) => ShowSettingsSection(SettingsSection.Audit);
+
+    /// <summary>页签切换：视图各自持 DataContext，只换谁可见（不做控件重建，滚动位置/输入内容都保留）。</summary>
+    private void ShowSettingsSection(SettingsSection section)
     {
-        MobileLlmView.IsVisible = !capabilities;
-        MobileCapabilitiesScroll.IsVisible = capabilities;
-        LlmTabButton.Opacity = capabilities ? 0.55 : 1.0;
-        CapabilitiesTabButton.Opacity = capabilities ? 1.0 : 0.55;
+        MobileLlmView.IsVisible = section == SettingsSection.Llm;
+        MobileCapabilitiesScroll.IsVisible = section == SettingsSection.Capabilities;
+        MobileAuditView.IsVisible = section == SettingsSection.Audit;
+        LlmTabButton.Opacity = section == SettingsSection.Llm ? 1.0 : 0.55;
+        CapabilitiesTabButton.Opacity = section == SettingsSection.Capabilities ? 1.0 : 0.55;
+        AuditTabButton.Opacity = section == SettingsSection.Audit ? 1.0 : 0.55;
     }
 
     private void OnSettingsClose(object? sender, RoutedEventArgs e)

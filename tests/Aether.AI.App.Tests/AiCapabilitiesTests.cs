@@ -1,6 +1,7 @@
 using Aether.AI.Abstractions;
 using Aether.AI.App;
 using Aether.AI.App.Core;
+using Aether.AppAudit.AI;
 using Aether.AI.App.ViewModels;
 using Aether.AI.Core.Agents;
 using Aether.AI.Harness.Agents;
@@ -75,7 +76,10 @@ public class AiCapabilitiesTests : IDisposable
         var vm = App.BuildProvider(_dataDir).GetRequiredService<SettingsViewModel>();
         await vm.RefreshCapabilitiesCommand.ExecuteAsync(null);
 
-        var skill = Assert.Single(vm.Skills);
+        // 组合根会顺手把内置的 app-audit 判定标准也种进 skills 目录（见 AppAuditSkill），
+        // 所以这里按名字取，而不是断言只有一条。
+        var skill = Assert.Single(vm.Skills.Where(x => x.Name == "daily-report"));
+        Assert.Contains(vm.Skills, x => x.Name == AppAuditSkill.Name);
         Assert.Equal("daily-report", skill.Name);
         Assert.Equal("报表", skill.Category);
         Assert.Contains("脚本不可执行", vm.HostCapabilityText);
@@ -92,7 +96,8 @@ public class AiCapabilitiesTests : IDisposable
         var vm = App.BuildProvider(_dataDir).GetRequiredService<SettingsViewModel>();
         await vm.RefreshCapabilitiesCommand.ExecuteAsync(null);
 
-        Assert.Single(vm.Skills);
+        Assert.Contains(vm.Skills, x => x.Name == "daily-report");
+        Assert.Contains(vm.Skills, x => x.Name == AppAuditSkill.Name);
         Assert.Contains("脚本可执行", vm.HostCapabilityText);
     }
 

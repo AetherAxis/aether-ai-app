@@ -4,7 +4,7 @@
 一套 AXAML / ViewModel / Core，按平台调整主题、控件尺寸、手势与 safe-area。
 
 **当前状态（2026-10-27）**：M0 方案A 六项硬前提全过 → M1 桌面聊天 MVP → M2-lite 自定义大脑（LLM/规则/代码）
-→ M2-tools ⑭ 工具接入 → M2-caps 技能包 + 连接器 → M2-memory 记忆开关 → M2-wallet 链上钱包两端可用。正式结构在 `src/`
+→ M2-tools ⑭ 工具接入 → M2-caps 技能包 + 连接器 → M2-memory 记忆开关 → M2-wallet 链上钱包两端可用 → M2-appaudit 应用审查页。正式结构在 `src/`
 （App.Core 无 UI 引擎 + App 共享 UI + `.Desktop`/`.Android`/`.iOS` 三个 head + `tests/`）；
 `spike/` 是 M0 期的可丢原型，仅留作历史证据。
 **先看下节「平台能力对照」**——手机端与桌面端能做什么、差在哪，一张表说清。
@@ -13,7 +13,7 @@
 
 - ⑩ `aether-workbench`——桌面壳/主题引擎/布局（spike 仅验证移动 TFM 可引用 + 主题清单可加载）
 - ⑫ `aether-ai`——Hosting + Brains.Rule + Memory.Sqlite（**移动端闭包不带 Roslyn/FCS/LLM SDK 之外的重物**）
-- ⑭ `aether-ai-integrations`——系统工具 15 个 + 链上钱包 4 个（**都手机桌面共享**：钱包是纯客户端，节点地址读 `<dataDir>/ledger.json`；命令类仅桌面）；**⑬ `aether-knowledge` 已于 2026-10-27 归档**
+- ⑭ `aether-ai-integrations`——系统工具 16 个（含 **WebSearch** 网搜）+ 链上钱包 4 个（**都手机桌面共享**：钱包是纯客户端，节点地址读 `<dataDir>/ledger.json`；命令类仅桌面）；**⑬ `aether-knowledge` 已于 2026-10-27 归档**
 
 ## 平台能力对照：手机端 / 桌面端（2026-10-27 实测口径）
 
@@ -33,10 +33,12 @@
 | 功能 | 手机 | 桌面 | 为什么 / 手机上的表现 |
 |---|:--:|:--:|---|
 | 文件类：ReadFile / WriteFile / EditFile / LineEditFile / DeleteFile / MoveFile | ⚠️ | ✅ | 工具本身可用，但**只能碰 App 沙箱内路径**（iOS 容器外的绝对路径读不到也写不了） |
+| **WebSearch（网搜，返回候选站点）** | ✅ | ✅ | 纯 HTTP 抓搜索引擎结果页，两端同源；应用审查页的反查用的是**同一份实现**（`WebSearchClient`） |
 | 检索与批处理：Grep / Glob / ExploreDirectory / DiffFile / ApplyPatch / ApplyPatchWithDelete | ✅ | ✅ | 同上：纯托管 + 文件 IO，沙箱内正常 |
 | FetchUrl（抓网页/PDF） | ✅ | ✅ | 纯 HTTP |
 | **ExecuteCommand / ExecuteShellCommand（起子进程）** | ❌ | ✅ | iOS 沙盒禁止 fork。手机端**连注册都不发生**（`includeCommandTools:false`），编辑页的工具列表里也没有它们 |
 | **链上钱包 4 个（LedgerGetInfo / GetBalance / Transfer / DepositToExchange）** | ✅ | ✅ | **纯客户端**（RPC + 本地签名），节点地址由配置给：`<dataDir>/ledger.json` &gt; `AETHER_LEDGER_NODE_ADDR` &gt; 开发默认 `127.0.0.1:17805`。手机端在「模型设置 → 能力」里填服务端节点。签名库 2026-10-27 已从 NSec（libsodium 原生）换成纯托管 BouncyCastle Ed25519——**签名字节逐字节不变**（① `LedgerEd25519ParityTests` 对照回归），iOS 链接失败问题随之消失，三 TFM 均构建+链接通过 |
+| **应用审查 3 个（ListAuditTasks / SaveAppVerdict / ReadAppVerdict）** | ✅ | ✅ | **取任务 + 写/读结论，不含判定逻辑**——页面只发布任务，agent 自己查证据判、把结论写回同一份记录。只用本地 JSON，Safe 级不触发审批 |
 | Echo（演示/回显） | ✅ | ✅ | 两端都在，用于审批演示与冒烟 |
 
 ### 三、技能包与连接器
@@ -65,6 +67,7 @@
 | agent 管理（增删改、三类大脑、记忆开关） | ✅ 内嵌浮层 | ✅ 880×860 模态窗 | 同一份 `AgentsView` |
 | 模型档案管理（CRUD + 测试连接 + 切换免重启） | ✅ 内嵌浮层 | ✅ 模态窗 | 同一份 `LlmProfilesView` |
 | **设置页**（外观主题 / 重置布局） | ❌ | ✅ | 设置页挂在 ⑩ 工作台的 nav rail 齿轮上；移动形态没有 nav rail（移动壳属 M3）。**但其「能力」内容手机可达**：`CapabilitiesView`（技能包 / 连接器 / 链上钱包）已挂到手机「模型设置」浮层的「能力」页签 |
+| **应用审查页**（发布任务 + 显示结论） | ✅ 「模型设置 → 审查」页签 | ✅ nav rail 独立 tab | 同一份 `AppAuditView`/VM；**页面不搜不判**，结论由 agent 通过工具写回同一份 `app-audit.json`，见 M2-appaudit |
 | 布局持久化、分隔条、多 tab | ❌ | ✅ | 桌面壳专属；移动是单视图全屏 |
 | 主题 | 固定浅色 overlay | 4 套主题可切 | 移动端 `ThemeLoader.Apply` 直接叠在根视图上 |
 
@@ -85,6 +88,9 @@
 - 移动壳（Page 族导航 / 底部 tab / 完整设置页）属 M3——上面「设置页 ❌」就是这条的直接体现；
   其中能力面（技能包/连接器/钱包）已通过「模型设置 → 能力」页签在手机可达，外观/布局仍是桌面专属。
 - 手机端文件类工具的实际可用范围以沙箱为界，还没做「用户可见的目录选择器」。
+- **应用审查的判定质量取决于你用的 agent**：页面只发布任务，判定由 agent 做（它搜几次、抓不抓正文都由它决定）。
+  想让判定更硬就让它多抓几页；遇到同名站/落地页的正确处置是落「不确定」，不是硬给一个结论。
+  判定模块本身不在本仓（在 ⑭ `Aether.AppAudit.AI`），所以换判定方/换宿主都不用动这里。
 
 ## M0 验证清单（2026-10-24 全部通过 ✅）
 
@@ -151,8 +157,8 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 宿主 `ChatView` 收到事件再开配置窗（桌面模态 / 移动浮层）。单测见 `tests/…App.Tests/ModelPickerTests.cs`（5 例）。
 
 **2026-10-27 输入栏收敛（用户反馈：助手选择不该在左上、模型下拉前的「模型」文字多余）**：
-- **助手选择器从头部下移到输入卡**，与「运行模式」「模型」并排成一行——「跟谁聊 / 用什么模型」两个开关集中在一处，
-  头部只留当前助手名（只读，+ token 用量），不再在左上角重复一个下拉。
+- **助手选择器从头部下移到输入卡**，与「运行模式」「模型」并排成一行——「跟谁聊 / 用什么模型」两个开关集中在一处。
+  头部**不再出现 agent 名**（下拉里就在显示，重复一遍只是噪音），左上只剩 token 用量。
 - **去掉模型下拉前的「模型」文字前缀**：下拉本身已显示档案名/模型 id，前缀只是挤位置（悬停提示仍说明「选档案即切换」）。
 - 顺带对齐尺寸：三个 picker 统一 `Padding="8,4" FontSize="11"`——模型下拉原来没设内距，比邻居矮 8px
   （版式转储实测：AgentPicker/ModelPicker 现在同为 23.5 高、同一 y 基线；900×600 / 1280×820 / 1792×997 三档无裁切）。
@@ -304,6 +310,55 @@ LLM 大脑下多了「记忆」区两个开关，列表行出现「记忆」标�
   ⑮ `LedgerSettingsTests` 8 例 + 钱包接线 3 例（两端都有四工具、审批等级、配置落数据目录）。
 - 验收：`--tools` 桌面 20 个（含钱包 4）；**iOS 链接通过**（此前失败）；Android / Desktop 构建通过。
 
+### M2-appaudit（2026-10-27）：应用审查页（页面只发布任务，判定由 agent 做）
+
+需求：用户手上有**一份应用名清单**（手机上以 Chrome 网页应用方式装的那些，只知道显示名），
+想知道①这些名字对应的是哪个网站、②这是什么类型的网站，顺带判定它是不是博彩站。
+**结构性决定**：这页只做两件事——**发布任务**和**显示结论**。判定怎么做得由 agent 自己决定
+（它用 `WebSearch` 搜、用 `FetchUrl` 抓正文、凭已有知识都行），页面一行判定逻辑都没有。
+
+**任务流**
+
+```
+应用审查页 ──导入名单──▶ 待发布 ──发布任务──▶ 任务池
+                                              │  ListAuditTasks（agent 读）
+                                              ▼
+                                        agent 自己判定（工具不限）
+                                              │  SaveAppVerdict（agent 写）
+                                              ▼
+应用审查页 ◀── store.Changed 刷新 ──── app-audit.json
+```
+
+| # | 环节 | 实现 | 位置 |
+|---|---|---|---|
+| 1 | 清单来源 | **只有名字输入**：粘贴框一行一条 →「导入清单」（容忍 `1.` `2)` `1、` `- ` `• ` 前缀、`名字 https://…` 两段；给的名字自带网址就等于自带一条站点证据）。**不做本机扫描**——名字是用户的输入 | ⑭ `AppAudit.AI/AppNameList` |
+| 2 | 发布任务 | 「发布任务」只改状态：`待发布 → 已发布`（不搜、不判、不发请求）。默认跳过已判过的；勾「含已判过的（复核）」把它们也放进池，**旧结论不清空、留在历史里**，行上标「待复核」 | ⑭ `AppAudit.AI/AppAuditService.Publish` |
+| 3 | 取任务 | `ListAuditTasks`：待处理名字 + 清单里给的网址 + 上次结论（含判过几次），按发布时间先来后到、`limit` 截断 | ⑭ `AppAudit.AI/Tools/AppAuditTool` |
+| 4 | 判定 | **没有判断逻辑**：agent 自己找证据、自己下结论。口径写在 skill 里：`skills/app-audit/SKILL.md`（何时用 WebSearch/FetchUrl、类型标签、博彩判定、`不确定 ≠ 干净`） | ⑭ `AppAudit.AI/AppAuditSkill`（skill 正文）+ ⑭ `SystemTools.AI` 的 `WebSearch`/`FetchUrl`（证据工具） |
+| 5 | 写回 | `SaveAppVerdict`：追加一条 `AppVerdictAttempt`（时间/结论/类型/置信度/谁判的/理由/候选数）+ 覆盖当前结论 + 出池。合法性在入口拦（非法 verdict 不落盘；同义词/中文也认） | ⑭ `AppAudit.AI/Tools/AppAuditTool` + `AppAuditService.RecordVerdict` |
+| 6 | 页面 | 汇总一行（任务池/待发布/博彩/非博彩/不确定）+「发布任务(N)」+ 粘贴框 + 导入/清空 + 逐行：名称 / 对应网站 / **类型** / 徽章 / 置信度 /「重发」+ 第二行「状态 · 理由」+ 任务流说明卡 | `Views/AppAuditView.axaml` + `ViewModels/AppAuditViewModel` |
+| 7 | 落盘 | `<dataDir>/app-audit.json`（两端同一份，原子写 tmp→rename）；**再导入只补空缺，已判结论绝不被洗掉** | ⑭ `AppAudit.AI/AppAuditStore` |
+
+- 为什么这么切：判定是**会变的东西**（口径、模型、要不要抓正文、要不要多轮），把它放进页面/服务里，
+  换个判法就得改代码重编译；切出去以后——调口径改 Markdown、换判定方换 agent、页面和存储一行不动。
+  刻意**不提供**「一条龙判定工具」（把“怎么判”钉死在工具里的老路）。
+- **判定不是一次定终身**：行上「重发」把单条放回任务池（或勾「含已判过的」批量发布复核任务），
+  再判一次就再写一条历史；行上显示「第 N 次判定」、悬停看历次结论。
+- 类型标签口径：体育博彩 / 真人赌场 / 棋牌 / 视频 / 直播 / 社交 / 电商 / 新闻资讯 / 工具 / 软件下载 / 网盘 /
+  游戏 / 色情 / 金融理财 / 诈骗站 / 未知；判不准时填「未知」，不许猜（页面类型列显示 `—` 即未判定）。
+- 纪律：**「不确定」是保留结论，不是「非博彩」**——搜不到/同名不同义/证据不足都落成可见的 Inconclusive。
+- 老文件兼容：旧版页面内流水线的阶段（`Searching`/`Searched`/`Judging`）**都算「待处理」**，
+  中途退出的记录不会变成没人管的孤儿；枚举名保留就是为了读得懂老 JSON。
+- skill 升级也守「不覆盖用户改动」：盘上内容若还是**旧版默认正文**（说明没改过）才升级成新版，
+  改过的一律不动。
+- **领域代码不在本仓**（2026-10-27）：模型 / 落盘 / 任务板 / 判定口径 skill / 三个工具全部搬到
+  ⑭ `aether-ai-integrations/src/Aether.AppAudit.AI`（`AddAppAuditTools(builder, dataDir, skillsDir)`），
+  和 `Aether.Ledger.AI` 同一个惯例「一个领域一个模块」。本仓只剩这页的 `AppAuditView` + `AppAuditViewModel`
+  与一行注册——所以任何宿主（别的 app/CLI/服务）引用 ⑭ 那个模块就能有自己的应用审查，不需要这个 UI 仓。
+  回归测试也随之搬到 ⑭ `tests/Aether.AppAudit.AI.Tests`（31 例：任务板状态机、写入纪律、工具链路、
+  skill 落盘/迁移）；本仓 58 例里只剩「页面动作」这一层。
+- 验收：桌面 `--tools` 有 `应用审查（3）`；`--dump-layout` 三档尺寸（1280/900/1792）该页无遮挡、无横向溢出。
+
 ### 移动端（方案A 实证，2026-10-24）
 
 同一份 ChatView/ChatViewModel/Core 直跑 iOS 与 Android（`src/Aether.AI.App.{iOS,Android}` head）：
@@ -321,7 +376,7 @@ LLM 大脑下多了「记忆」区两个开关，列表行出现「记忆」标�
 
 ```bash
 dotnet build src/Aether.AI.App.Desktop -c Debug    # 桌面链（Core+App+⑩⑫ 传递）
-dotnet test tests/Aether.AI.App.Tests              # 58 例（含工具接线 / 能力 / 记忆 / 钱包配置）
+dotnet test tests/Aether.AI.App.Tests              # 58 例（含工具接线 / 能力 / 记忆 / 钱包配置 / 页面动作）
 dotnet run --project src/Aether.AI.App.Desktop     # GUI
 dotnet run --project src/Aether.AI.App.Desktop -- --smoke       # 规则全链路 + 审批自恢复（exit 0 = L2 无 GUI 等价）
 dotnet run --project src/Aether.AI.App.Desktop -- --llm-smoke    # LLM 真模型冒烟（需已配置档案；无档案 SKIP）
