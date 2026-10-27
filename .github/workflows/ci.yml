@@ -19,7 +19,7 @@ jobs:
         with:
           path: aether-ai-app
       # 跨仓依赖（本地 ProjectReference 拓扑——切 PackageReference 后可移除）：
-      # ai-app → aether-ai / aether-workbench
+      # ai-app → aether-ai / aether-workbench / aether-ai-integrations
       - uses: actions/checkout@v4
         with:
           repository: AetherAxis/aether-ai
@@ -28,11 +28,29 @@ jobs:
         with:
           repository: AetherAxis/aether-workbench
           path: aether-workbench
+      - uses: actions/checkout@v4
+        with:
+          repository: AetherAxis/aether-ai-integrations
+          path: aether-ai-integrations
+      # 防复发：csproj 里每个 `..\..\..\<repo>\…` 都必须在同级目录存在，否则 MSB3202。
+      # 本地工作区永远解析得到（14 仓并排），只有干净的 CI runner 会暴露——所以在这断言。
+      - name: Assert cross-repo checkouts match csproj references
+        shell: bash
+        run: |
+          missing=0
+          for ref in $(grep -rhoE '(\.\.[\\/]){3}[A-Za-z0-9._-]+' aether-ai-app --include='*.csproj' \
+                       | sed -E 's/^(\.\.[\\/]){3}//' | sort -u); do
+            if [ ! -d "$ref" ]; then
+              echo "::error::csproj 引用了兄弟仓 '$ref'，但 CI 没有 checkout 它（见上方 checkout 列表）"
+              missing=1
+            fi
+          done
+          exit $missing
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      # L1：桌面链构建（Core/App/Desktop——slnx 里的 spike android/ios TFM 需本机 workload，CI 暂不覆盖；
-      #     移动 TFM 的构建与实跑见 README M0 记录，后续增专门 workflow）
+      # L1：桌面链构建（Core/App/Desktop）。src 的 Android/iOS head 需本机 workload，CI 不覆盖——
+      #     移动 TFM 的构建与实跑见 README M0 记录，后续增专门 workflow。
       - name: Build
         run: dotnet build aether-ai-app/src/Aether.AI.App.Desktop/Aether.AI.App.Desktop.csproj -c Release
       # L1.5：测试（Core 引擎分段/审批/持久化往返 + VM 级集成——真实组合根全链路）

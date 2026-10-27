@@ -1,6 +1,11 @@
 <Solution>
   <!-- M1 正式结构：Core（无 UI 引擎）+ App（Avalonia 共享 UI）+ Desktop head + tests。
-       spike/（M0 原型）保留至 M3 移动 head 落地后移除。 -->
+
+       spike/（M0 原型，4 个与 src/ 一一对应的「双份 head」）**不再进解决方案**：它同时出现会让
+       「搜 Program.cs / App.axaml 命中错文件」「IDE 里两个同名 head」变成日常风险，而 M0 的三平台
+       实证结论已经写进 README，留着目录只为考古。要看/要跑就显式指定：
+         dotnet build spike/Aether.AI.App.Spike.Desktop/Aether.AI.App.Spike.Desktop.csproj
+       等 M3 移动壳落地、spike 彻底没用了，再删目录。 -->
   <Project Path="src/Aether.AI.App.Core/Aether.AI.App.Core.csproj" />
   <Project Path="src/Aether.AI.App/Aether.AI.App.csproj" />
   <Project Path="src/Aether.AI.App.Desktop/Aether.AI.App.Desktop.csproj" />
@@ -8,8 +13,4 @@
   <Project Path="src/Aether.AI.App.iOS/Aether.AI.App.iOS.csproj" />
   <Project Path="tests/Aether.AI.App.Core.Tests/Aether.AI.App.Core.Tests.csproj" />
   <Project Path="tests/Aether.AI.App.Tests/Aether.AI.App.Tests.csproj" />
-  <Project Path="spike/Aether.AI.App.Spike/Aether.AI.App.Spike.csproj" />
-  <Project Path="spike/Aether.AI.App.Spike.Desktop/Aether.AI.App.Spike.Desktop.csproj" />
-  <Project Path="spike/Aether.AI.App.Spike.Android/Aether.AI.App.Spike.Android.csproj" />
-  <Project Path="spike/Aether.AI.App.Spike.iOS/Aether.AI.App.Spike.iOS.csproj" />
 </Solution>

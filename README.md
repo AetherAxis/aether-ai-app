@@ -372,6 +372,13 @@ LLM 大脑下多了「记忆」区两个开关，列表行出现「记忆」标�
 - 待 M3：Page 族移动壳（NavigationPage/TabbedPage + TopCommandBar/BottomCommandBar——Avalonia 12 原语）、
   iOS 软键盘/真机 AOT、Android edge-to-edge 深化。
 
+## CI
+
+`.github/workflows/ci.yml`：checkout 本仓 + 三个兄弟仓（`aether-ai` / `aether-workbench` / `aether-ai-integrations`）
+→ **断言 csproj 里每个 `..\..\..\<repo>\…` 引用的兄弟仓都已 checkout**（本地工作区永远解析得到，只有干净 runner 会暴露 MSB3202）
+→ 桌面链 Release 构建 → 两个测试项目 → `--smoke`（L2 无 GUI 等价）。
+**加跨仓引用时，记得同步 CI 的 checkout 列表**——落下了会被上面那条断言当场拦下。
+
 ## 构建
 
 ```bash
@@ -383,5 +390,6 @@ dotnet run --project src/Aether.AI.App.Desktop -- --llm-smoke    # LLM 真模型
 dotnet run --project src/Aether.AI.App.Desktop -- --dump-layout  # 版式诊断：三档窗口尺寸 × 各 tab 的视觉树几何 → %TEMP%/aether-layout-*.txt
 dotnet run --project src/Aether.AI.App.Desktop -- --tools        # 工具巡检：当前宿主可用工具（分类/审批等级）+ 被过滤项
 # 实测（2026-10-24，DeepSeek）：deepseek-chat 流式 token 段>0 ✅；deepseek-reasoner reasoning 段>0（💭 思考卡路径）✅
-dotnet build aether-ai-app.slnx                    # 全仓（含 spike 的 android/ios TFM，需本机 workload）
+dotnet build aether-ai-app.slnx                    # 全仓 7 个项目（src 的 android/ios head 需本机 workload）
+# spike/（M0 原型、与 src 一一对应的「双份 head」）已移出 slnx，需要时显式指定 csproj 构建
 ```
