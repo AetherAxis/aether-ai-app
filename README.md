@@ -150,6 +150,13 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 选哨兵只发 `ManageLlmRequested` 事件并由 VM 把值**弹回**原档案（下拉里始终显示当前模型，不会停在「管理模型…」上），
 宿主 `ChatView` 收到事件再开配置窗（桌面模态 / 移动浮层）。单测见 `tests/…App.Tests/ModelPickerTests.cs`（5 例）。
 
+**2026-10-27 输入栏收敛（用户反馈：助手选择不该在左上、模型下拉前的「模型」文字多余）**：
+- **助手选择器从头部下移到输入卡**，与「运行模式」「模型」并排成一行——「跟谁聊 / 用什么模型」两个开关集中在一处，
+  头部只留当前助手名（只读，+ token 用量），不再在左上角重复一个下拉。
+- **去掉模型下拉前的「模型」文字前缀**：下拉本身已显示档案名/模型 id，前缀只是挤位置（悬停提示仍说明「选档案即切换」）。
+- 顺带对齐尺寸：三个 picker 统一 `Padding="8,4" FontSize="11"`——模型下拉原来没设内距，比邻居矮 8px
+  （版式转储实测：AgentPicker/ModelPicker 现在同为 23.5 高、同一 y 基线；900×600 / 1280×820 / 1792×997 三档无裁切）。
+
 两处共用同一个 `SettingsViewModel` 单例（编辑即时落档，下拉随 `Changed` 重建），但**互不重复渲染对方的内容**；
 `SettingsView.ShowAppearance` 因此删除（不再需要“同一页按宿主藏区”的开关）。
 `ChatMessagesView` 空态文案同步改成“在输入卡的「模型」里配置”。
@@ -178,7 +185,7 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
   保存/删除 → `store.Changed` → `ChatViewModel.RefreshAgentTargetsAsync()` 热刷新聊天下拉，
   重设选中项时经 `_rebuildingTargets` 抑制「用户切目标 → 开新会话」的副作用。
 - ⑫ 侧只加了一个**纯增量**字段 `AgentDefinition.Description`（给人看的摘要，与喂模型的 `Instructions` 分开）。
-- **入口与模型完全同构**：Agents 不再是 nav 页 —— 聊天顶部 agent 下拉末项「管理 agent…」→ 模态窗（桌面 880×860）/
+- **入口与模型完全同构**：Agents 不再是 nav 页 —— 输入栏 agent 下拉末项「管理 agent…」→ 模态窗（桌面 880×860）/
   内嵌浮层（移动），宿同一份 `AgentsView` + `AgentsViewModel`；选中哨兵时 VM 把值弹回原 agent 并抛 `ManageAgentsRequested`，
   **不触发**「切目标开新会话」（`AgentTargetItem.IsManage` + `_lastAgentId` 回弹）。
   旧布局档案（含 agents tab）由 ⑩ 的 `CoversSameRegions` 判定结构变化后自动回退默认，无迁移负担。

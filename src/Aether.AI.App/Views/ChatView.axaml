@@ -13,42 +13,22 @@
   <!-- Panel 根：聊天内容 + 审批 bottom sheet 叠加层（移动形态激活——App.MobileApproval broker 驱动；桌面休眠） -->
   <Panel>
   <DockPanel>
-    <!-- 头部：agent 选择 / token 用量 / 历史会话 / 新聊天 / 设置（齿轮，仅移动形态显示） -->
+    <!-- 头部：当前助手（只读）/ token 用量 / 历史会话 / 新聊天 / 设置（齿轮，仅移动形态显示）
+         **助手选择器已下移到输入卡**（与模型选择并排——「跟谁聊 / 用哪个模型」放一处更主流）；
+         这里只显示"我在跟谁聊"，不重复给一个下拉。 -->
     <Border DockPanel.Dock="Top" Classes="pane-head" Padding="16,0" Background="{DynamicResource CardBgBrush}"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
-        <Border Grid.Column="0" Classes="picker">
-          <ComboBox x:Name="AgentPicker" Classes="compact" ItemsSource="{Binding AgentTargetItems}" SelectedItem="{Binding SelectedAgentTarget}"
-                    PlaceholderText="选择 agent">
-            <ComboBox.SelectionBoxItemTemplate>
-              <DataTemplate>
-                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                  <TextBlock Text="{Binding DisplayIcon}" FontSize="11" /><TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" />
-                </StackPanel>
-              </DataTemplate>
-            </ComboBox.SelectionBoxItemTemplate>
-            <ComboBox.ItemTemplate>
-              <DataTemplate>
-                <!-- 末项「管理 agent…」带一条分隔线（与模型下拉的「管理模型…」同一套交互） -->
-                <StackPanel Spacing="2">
-                  <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,4,0,4"
-                          IsVisible="{Binding IsManage}"/>
-                  <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBlock Text="{Binding DisplayIcon}" FontSize="13" VerticalAlignment="Center" />
-                    <StackPanel Spacing="2">
-                      <TextBlock Text="{Binding Name}" FontSize="13" />
-                      <TextBlock Text="{Binding Description}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-                  </StackPanel>
-                </StackPanel>
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-        </Border>
-        <TextBlock Grid.Column="1" Text="{Binding TokenInfo}" VerticalAlignment="Center" FontSize="12"
-                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="16,0,0,0" TextTrimming="CharacterEllipsis"/>
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <TextBlock Text="{Binding SelectedAgentTarget.DisplayIcon}" FontSize="12" VerticalAlignment="Center"/>
+          <TextBlock Text="{Binding SelectedAgentTarget.Name}" FontSize="13" FontWeight="SemiBold"
+                     VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}"
+                     TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{Binding TokenInfo}" VerticalAlignment="Center" FontSize="11" Margin="10,0,0,0"
+                     Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
         <!-- 历史会话（Flyout 下拉） -->
-        <Button Grid.Column="2" x:Name="HistoryFlyoutButton" Classes="ghost" Padding="8,4" FontSize="12" ToolTip.Tip="历史会话"
+        <Button Grid.Column="1" x:Name="HistoryFlyoutButton" Classes="ghost" Padding="8,4" FontSize="12" ToolTip.Tip="历史会话"
                 VerticalAlignment="Center">
           <Path Data="{x:Static wb:Codicons.History}" Stretch="Uniform" Width="14" Height="14"
                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
@@ -100,13 +80,13 @@
           </Button.Flyout>
         </Button>
         <!-- 新聊天 -->
-        <Button Grid.Column="3" Command="{Binding NewChatCommand}" Classes="ghost" Padding="8,4" FontSize="12"
+        <Button Grid.Column="2" Command="{Binding NewChatCommand}" Classes="ghost" Padding="8,4" FontSize="12"
                 ToolTip.Tip="新聊天" VerticalAlignment="Center">
           <Path Data="{x:Static wb:Codicons.Add}" Stretch="Uniform" Width="14" Height="14"
                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
         </Button>
         <!-- 设置（移动形态：桌面走 rail 左下角齿轮入口（FooterPanelKey=settings），齿轮隐藏——code-behind 控制） -->
-        <Button Grid.Column="4" x:Name="SettingsGearButton" Click="OnSettingsGear" Classes="ghost" Padding="8,4"
+        <Button Grid.Column="3" x:Name="SettingsGearButton" Click="OnSettingsGear" Classes="ghost" Padding="8,4"
                 ToolTip.Tip="设置" VerticalAlignment="Center" IsVisible="False">
           <Path Data="{x:Static wb:Codicons.SettingsGear}" Stretch="Uniform" Width="14" Height="14"
                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
@@ -183,6 +163,42 @@
           <Border Classes="chat-input-card">
             <Grid RowDefinitions="Auto,*">
               <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="10,10,10,8" HorizontalAlignment="Stretch">
+                <!-- 助手选择器：与「运行模式」「模型」并排——会话的两个身份开关（跟谁聊 / 用哪个模型）集中在输入栏，
+                     头部只留当前助手名（不再在左上角给一个下拉）。末项「管理 agent…」进管理窗。 -->
+                <Border Classes="picker" Margin="0,0,8,0">
+                  <ComboBox x:Name="AgentPicker" Classes="compact" ItemsSource="{Binding AgentTargetItems}"
+                            SelectedItem="{Binding SelectedAgentTarget}"
+                            Padding="8,4" FontSize="11" MinWidth="96" PlaceholderText="选择助手"
+                            ToolTip.Tip="选择助手（末项「管理 agent…」打开管理窗）">
+                    <ComboBox.SelectionBoxItemTemplate>
+                      <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding DisplayIcon}" FontSize="11"/>
+                          <TextBlock Text="{Binding Name}" FontSize="11" VerticalAlignment="Center"
+                                     TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ComboBox.SelectionBoxItemTemplate>
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <!-- 末项「管理 agent…」带一条分隔线（与模型下拉的「管理模型…」同一套交互） -->
+                        <StackPanel Spacing="2">
+                          <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,4,0,4"
+                                  IsVisible="{Binding IsManage}"/>
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding DisplayIcon}" FontSize="13" VerticalAlignment="Center"/>
+                            <StackPanel Spacing="2">
+                              <TextBlock Text="{Binding Name}" FontSize="13"/>
+                              <TextBlock Text="{Binding Description}" FontSize="10"
+                                         Foreground="{DynamicResource TextSecondaryBrush}"
+                                         TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                          </StackPanel>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </Border>
                 <!-- 运行模式选择器（4 档）：运行中切档逐工具即时生效 -->
                 <Border Classes="picker" IsVisible="{Binding HasModeSupport}">
                   <ComboBox IsVisible="{Binding HasModeSupport}"
@@ -213,11 +229,12 @@
 
                 <!-- 模型：**选择与配置在同一处**——下拉列出全部 LLM 档案（选中即切换，下一轮对话生效），
                      末项「管理模型…」打开配置窗（LlmProfilesView）。原先的 chips + 「模型 ⚙」按钮已合并到这里。 -->
+                <!-- 模型选择：下拉里已显示档案名/模型 id，**不再加「模型」文字前缀**（多余且挤位置；
+                     悬停提示仍说明「选档案即切换」）。 -->
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                  <TextBlock Text="模型" FontSize="11" VerticalAlignment="Center"
-                             Foreground="{DynamicResource TextSecondaryBrush}"/>
                   <Border Classes="picker">
                     <ComboBox x:Name="ModelPicker" Classes="compact" MinWidth="110"
+                              Padding="8,4" FontSize="11"
                               ItemsSource="{Binding LlmPickerItems}"
                               SelectedItem="{Binding SelectedLlm}"
                               PlaceholderText="未配置模型"
