@@ -13,7 +13,7 @@
 
 - ⑩ `aether-workbench`——桌面壳/主题引擎/布局（spike 仅验证移动 TFM 可引用 + 主题清单可加载）
 - ⑫ `aether-ai`——Hosting + Brains.Rule + Memory.Sqlite（**移动端闭包不带 Roslyn/FCS/LLM SDK 之外的重物**）
-- ⑭ `aether-ai-integrations`——系统工具 16 个（含 **WebSearch** 网搜）+ 链上钱包 4 个（**都手机桌面共享**：钱包是纯客户端，节点地址读 `<dataDir>/ledger.json`；命令类仅桌面）；**⑬ `aether-knowledge` 已于 2026-10-27 归档**
+- ⑭ `aether-ai-integrations`——系统工具 16 个（含 **WebSearch** 网搜）+ 链上钱包 4 个（**都手机桌面共享**：钱包是纯客户端，节点地址读 `<dataDir>/ledger.json`；命令类仅桌面）
 
 ## 平台能力对照：手机端 / 桌面端（2026-10-27 实测口径）
 
