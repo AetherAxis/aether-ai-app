@@ -7,7 +7,7 @@ namespace Aether.AI.App;
 /// <see cref="Aether.Workbench.IPreferencesStore"/> 的 JSON 文件实现（单文件字典）。
 /// <see cref="GetAsync"/> 同步完成——引擎启动期 <c>RestoreThemeSync</c> 会在 UI 线程上
 /// <c>GetAwaiter().GetResult()</c>，异步实现会死锁。<see cref="SetAsync"/> 同步落盘
-/// （best-effort：失败吞）。自 ⑪ aether-desktop 逐字 port。
+/// （best-effort：失败吞）。自 ⑪ aether-ctp-desktop 逐字 port。
 /// </summary>
 public sealed class JsonPreferencesStore : Aether.Workbench.IPreferencesStore
 {
