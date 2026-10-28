@@ -32,13 +32,6 @@ jobs:
         with:
           repository: AetherAxis/aether-ai-integrations
           path: aether-ai-integrations
-      # ⑭ 的传递依赖：Aether.Ledger.AI 引 ① aether-ledger（LedgerWalletTool 用 LedgerClient /
-      # LedgerWallet / LedgerAddress / LedgerSupply）。⑮ 会构建 ⑭，所以 ⑭ 的依赖链也必须在这里齐全——
-      # 漏了只会在 runner 上炸成 warning MSB9008 + 一串 CS0246，本地永远看不出来（16 仓并排全解析得到）。
-      - uses: actions/checkout@v4
-        with:
-          repository: AetherAxis/aether-ledger
-          path: aether-ledger
       # 防复发：csproj 里每个 `..\..\..\<repo>\…` 都必须在同级目录存在，否则 MSB3202。
       # ⚠ 扫描范围必须包含**本仓会构建的兄弟仓**（⑭），否则正是这次那种漏检：
       # 本仓 csproj 干净、⑭ 的 csproj 引了未 checkout 的仓，断言却被判绿。

@@ -19,8 +19,6 @@
     <!-- 直接引 UI 层：VM 级集成测试走真实组合根（App.BuildProvider），不需要初始化 Avalonia
          （ChatViewModel/引擎全走 IUiDispatcher 端口；测试注入内联实现）。 -->
     <ProjectReference Include="..\..\src\Aether.AI.App\Aether.AI.App.csproj" />
-    <!-- 链上钱包接线断言要直接用 ⑭ 的 AddLedgerTools / ① 的地址类型（跨仓 ProjectReference 不传递） -->
-    <ProjectReference Include="..\..\..\aether-ai-integrations\src\Aether.Ledger.AI\Aether.Ledger.AI.csproj" />
     <!-- 代码大脑端到端测试要真编译（Roslyn）——与桌面 head 同一个编译器包 -->
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Brains.Code.Compilation.CSharp\Aether.AI.Brains.Code.Compilation.CSharp.csproj" />
   </ItemGroup>

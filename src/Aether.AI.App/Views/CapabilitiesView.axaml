@@ -82,47 +82,5 @@
       </StackPanel>
     </Border>
 
-    <!-- ═══ 链上钱包（客户端配置：节点在哪跟平台无关，只跟这份配置有关）═══ -->
-    <Border Classes="msg-card" Padding="20,18" CornerRadius="14" IsVisible="{Binding HasLedger}">
-      <StackPanel Spacing="14">
-        <StackPanel Spacing="3">
-          <TextBlock Text="链上钱包" FontSize="14" FontWeight="SemiBold"/>
-          <TextBlock Text="钱包是链服务客户端：桌面可以把节点指向本机，手机要指向服务端节点。改完保存，下一轮对话生效；两端填同一份配置就行为一致。"
-                     FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
-        </StackPanel>
-
-        <StackPanel Spacing="6">
-          <TextBlock Text="链节点地址" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
-          <TextBox Text="{Binding FormLedgerNode}" FontSize="13" MinHeight="36"
-                   PlaceholderText="host:port，如 10.0.0.5:17805（留空 = 环境变量 / 默认 127.0.0.1:17805）"/>
-        </StackPanel>
-
-        <StackPanel Spacing="6">
-          <TextBlock Text="交易所托管地址（充值目标 custody）" FontSize="11"
-                     Foreground="{DynamicResource TextSecondaryBrush}"/>
-          <TextBox Text="{Binding FormLedgerCustody}" FontSize="13" MinHeight="36"
-                   PlaceholderText="40 位小写 hex（留空 = 未配置，充值工具会提示）"/>
-        </StackPanel>
-
-        <Button Command="{Binding SaveLedgerSettingsCommand}" Content="保存钱包配置"
-                Classes="primary" Padding="16,8" FontSize="13" MinHeight="38" HorizontalAlignment="Left"/>
-
-        <TextBlock Text="{Binding LedgerStatus}" FontSize="12" TextWrapping="Wrap"
-                   IsVisible="{Binding HasLedgerStatus}"
-                   Foreground="{DynamicResource TextSecondaryBrush}"/>
-
-        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="10" Padding="12,10">
-          <StackPanel Spacing="6">
-            <TextBlock Text="{Binding LedgerEffectiveText}" FontSize="11" TextWrapping="Wrap"/>
-            <TextBlock Text="配置文件" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-            <SelectableTextBlock Text="{Binding LedgerConfigPath}" FontSize="11" TextWrapping="Wrap"/>
-            <TextBlock Text="钱包种子文件（⚠ 文件即全部财富，不要外发、不要贴进对话）" FontSize="11"
-                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-            <SelectableTextBlock Text="{Binding WalletSeedPath}" FontSize="11" TextWrapping="Wrap"/>
-          </StackPanel>
-        </Border>
-      </StackPanel>
-    </Border>
-
   </StackPanel>
 </UserControl>

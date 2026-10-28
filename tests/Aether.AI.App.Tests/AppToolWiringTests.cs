@@ -1,9 +1,7 @@
 using Aether.AI.App;
-using Aether.AI.App.Core;
 using Aether.AI.Core.Agents;
 using Aether.AI.Harness.Tools;
 using Aether.AI.Hosting;
-using Aether.Ledger.AI;
 using Aether.SystemTools.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -98,82 +96,25 @@ public class AppToolWiringTests : IDisposable
     }
 
     /// <summary>head 工具钩子：不设 ⇒ 桌面专属工具不进注册表；设了 ⇒ 进表、可解析。
-    /// （链路留给真正只能在桌面跑的工具；链上钱包已不在其中——见下面「两端都有钱包」用例。）</summary>
+    /// （链路留给真正只能在桌面跑的工具——依赖本机进程/窗口/终端的。）</summary>
     [Fact]
     public void HeadToolsConfigure_钩子决定桌面专属工具是否进注册表()
     {
         App.HeadToolsConfigure = null;
-        Assert.False(Build().GetRequiredService<ToolRegistry>().Contains("WalletProbe"));
+        Assert.False(Build().GetRequiredService<ToolRegistry>().Contains("HeadProbe"));
 
         App.HeadToolsConfigure = (aether, dataDir) =>
         {
             Assert.True(Directory.Exists(dataDir));   // 钩子拿到的是已建好的数据目录
             aether.ConfigureToolRegistry(registry => registry.Register(
-                "WalletProbe", "钱包探针（测试替身）", "链上钱包",
-                _ => AIFunctionFactory.Create((Func<string>)(() => "probe"), "WalletProbe"),
+                "HeadProbe", "head 探针（测试替身）", "测试",
+                _ => AIFunctionFactory.Create((Func<string>)(() => "probe"), "HeadProbe"),
                 ToolApprovalLevel.Safe));
         };
 
         var registry = Build().GetRequiredService<ToolRegistry>();
-        Assert.True(registry.Contains("WalletProbe"));
-        Assert.Single(registry.ResolveAll(new[] { "WalletProbe" }));
-    }
-
-    /// <summary>
-    /// 链上钱包四工具**两端都有**：钱包是纯客户端（RPC + 本地签名），手机桌面同一份注册代码，
-    /// 差别只在节点地址配置（&lt;dataDir&gt;/ledger.json）。审批等级照旧随行——转账 Dangerous、充值 Confirm。
-    /// </summary>
-    [Fact]
-    public void 链上钱包四工具_手机宿主也注册()
-    {
-        var registry = Build().GetRequiredService<ToolRegistry>();
-        Assert.Equal(HostCapability.MobileOnly, registry.CurrentHost);
-
-        var usable = registry.GetUsableMetas();
-        var expected = new (string Name, ToolApprovalLevel Level)[]
-        {
-            ("LedgerGetInfo", ToolApprovalLevel.Safe),
-            ("LedgerGetBalance", ToolApprovalLevel.Safe),
-            ("LedgerTransfer", ToolApprovalLevel.Dangerous),
-            ("LedgerDepositToExchange", ToolApprovalLevel.Confirm),
-        };
-        foreach (var (name, level) in expected)
-        {
-            var meta = Assert.Single(usable, m => m.Name == name);
-            Assert.Equal(level, meta.ApprovalLevel);
-            Assert.Equal("链上钱包", meta.Category);
-            // 两端都能真解析（不是"注册了但被宿主过滤掉"）。
-            Assert.Single(registry.ResolveAll(new[] { name }));
-        }
-    }
-
-    /// <summary>同一个注册方法在桌面宿主下给出同一批工具——按宿主能力声明，钱包四工具没有平台标签。</summary>
-    [Fact]
-    public void 链上钱包四工具_桌面宿主也有()
-    {
-        using var desktop = BuildDesktopRegistry();
-        var registry = desktop.GetRequiredService<ToolRegistry>();
-        Assert.Equal(HostCapability.DesktopOnly, registry.CurrentHost);
-
-        var names = registry.GetUsableMetas().Select(m => m.Name).ToList();
-        foreach (var name in Aether.Ledger.AI.LedgerAIBuilderExtensions.ToolNames)
-        {
-            Assert.Contains(name, names);
-            Assert.Single(registry.ResolveAll(new[] { name }));
-        }
-    }
-
-    /// <summary>种子文件落在数据目录（两端同一路径，换端搬数据目录即续用同一个钱包）；钱包配置也从这里读。</summary>
-    [Fact]
-    public void 钱包配置与种子文件_落在数据目录()
-    {
-        var provider = Build();
-        var ledger = provider.GetRequiredService<LedgerSettings>();
-        Assert.Equal(Path.Combine(_dataDir, "ledger.json"), ledger.FilePath);
-
-        ledger.Save("10.0.0.5:17805", null);
-        Assert.True(File.Exists(Path.Combine(_dataDir, "ledger.json")));
-        Assert.Equal("10.0.0.5:17805", LedgerSettings.Load(_dataDir).NodeAddress);
+        Assert.True(registry.Contains("HeadProbe"));
+        Assert.Single(registry.ResolveAll(new[] { "HeadProbe" }));
     }
 
     /// <summary>端到端：真解析出 ⑭ 的 ReadFile，真读一个临时文件。</summary>
@@ -193,7 +134,7 @@ public class AppToolWiringTests : IDisposable
         Assert.Contains("第二行", text);
     }
 
-    /// <summary>桌面宿主的最小组合：同一套 ⑫ 平台 + ⑭ 系统工具 + 链上钱包，只是 <c>Host=DesktopOnly</c> 且带命令工具。</summary>
+    /// <summary>桌面宿主的最小组合：同一套 ⑫ 平台 + ⑭ 系统工具，只是 <c>Host=DesktopOnly</c> 且带命令工具。</summary>
     private ServiceProvider BuildDesktopRegistry()
     {
         var services = new ServiceCollection();
@@ -201,7 +142,6 @@ public class AppToolWiringTests : IDisposable
         var aether = services.AddAetherAI();
         aether.Configure(o => o.Host = HostCapability.DesktopOnly);
         aether.AddSystemTools(includeCommandTools: true);
-        aether.AddLedgerTools(Path.Combine(_dataDir, "desktop-wallet.seed"));
         return services.BuildServiceProvider();
     }
 }

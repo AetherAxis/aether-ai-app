@@ -42,7 +42,6 @@ public partial class SettingsViewModel : ObservableObject
     private readonly AiCapabilityPaths? _capabilities;
     private readonly SkillRegistry? _skills;
     private readonly IMcpManagementService? _mcp;
-    private readonly LedgerSettings? _ledger;
     private readonly bool _isDesktop;
 
     public ObservableCollection<SkillRowVM> Skills { get; } = new();
@@ -82,10 +81,6 @@ public partial class SettingsViewModel : ObservableObject
         _capabilities = serviceProvider.GetService<AiCapabilityPaths>();
         _skills = serviceProvider.GetService<SkillRegistry>();
         _mcp = serviceProvider.GetService<IMcpManagementService>();
-        // 链上钱包的宿主配置（ledger.json）：手机端**唯一**能填服务端节点的入口——所以它必须在设置面里。
-        _ledger = serviceProvider.GetService<LedgerSettings>();
-        FormLedgerNode = _ledger?.NodeAddress ?? string.Empty;
-        FormLedgerCustody = _ledger?.CustodyAddress ?? string.Empty;
         // 宿主类型从工具注册表读（同一份判定源：⑫ ToolRegistry.CurrentHost → AetherAIOptions.Host）。
         _isDesktop = serviceProvider.GetService<Aether.AI.Harness.Tools.ToolRegistry>()?.CurrentHost
                      != HostCapability.MobileOnly;
@@ -273,69 +268,6 @@ public partial class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             CapabilitiesStatus = $"刷新失败：{ex.Message}";
-        }
-    }
-
-    // ── 链上钱包（节点地址 / 交易所托管地址）───────────────────────────
-
-    /// <summary>配置文件里手写的节点地址（空 = 用环境变量/默认）。</summary>
-    [ObservableProperty] private string _formLedgerNode = string.Empty;
-
-    /// <summary>配置文件里手写的 custody 托管地址（空 = 用环境变量）。</summary>
-    [ObservableProperty] private string _formLedgerCustody = string.Empty;
-
-    [ObservableProperty] private string _ledgerStatus = string.Empty;
-
-    public bool HasLedger => _ledger is not null;
-    public bool HasLedgerStatus => !string.IsNullOrWhiteSpace(LedgerStatus);
-    public string LedgerConfigPath => _ledger?.FilePath ?? string.Empty;
-
-    /// <summary>当前生效的节点地址 + 来源（改完保存后刷新）——「我填的」和「环境变量给的」必须看得见区别。</summary>
-    public string LedgerEffectiveText => _ledger?.Describe() ?? string.Empty;
-
-    /// <summary>钱包种子文件路径（只显示路径，**永不显示内容**）。</summary>
-    public string WalletSeedPath => _ledger is null
-        ? string.Empty
-        : Path.Combine(Path.GetDirectoryName(_ledger.FilePath) ?? string.Empty, LedgerSettings.SeedFileName);
-
-    partial void OnLedgerStatusChanged(string value) => OnPropertyChanged(nameof(HasLedgerStatus));
-
-    /// <summary>
-    /// 保存节点/托管地址到 ledger.json。校验在两处：节点地址必须能解析出 host（填错当场报，
-    /// 不要等第一次转账才发现）；custody 必须是 40 位小写 hex（和链地址同规则）。
-    /// </summary>
-    [RelayCommand]
-    private void SaveLedgerSettings()
-    {
-        if (_ledger is null) return;
-        var node = FormLedgerNode.Trim();
-        var custody = FormLedgerCustody.Trim();
-
-        if (node.Length > 0)
-        {
-            var (host, port) = Aether.Ledger.AI.Tools.LedgerWalletTool.ParseNodeAddress(node);
-            if (string.IsNullOrWhiteSpace(host) || port is <= 0 or > 65535)
-            {
-                LedgerStatus = $"❌ 节点地址解析不出来：「{node}」（写成 host:port，如 10.0.0.5:17805）";
-                return;
-            }
-        }
-        if (custody.Length > 0 && (custody.Length != 40 || !custody.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'))))
-        {
-            LedgerStatus = "❌ 托管地址须 40 位小写 hex（与链上地址同规则）";
-            return;
-        }
-
-        try
-        {
-            _ledger.Save(node, custody);
-            LedgerStatus = $"✅ 已保存——下一轮对话生效；{_ledger.Describe()}";
-            OnPropertyChanged(nameof(LedgerEffectiveText));
-            OnPropertyChanged(nameof(WalletSeedPath));
-        }
-        catch (Exception ex)
-        {
-            LedgerStatus = $"❌ 保存失败：{ex.Message}";
         }
     }
 }

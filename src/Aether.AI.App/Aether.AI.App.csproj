@@ -39,11 +39,6 @@
     <ProjectReference Include="..\..\..\aether-ai-integrations\src\Aether.SystemTools.AI\Aether.SystemTools.AI.csproj" />
     <!-- ⑭ 应用审查集成模块：数据模型/任务板/skill/工具都在那边（本仓只留页面）。 -->
     <ProjectReference Include="..\..\..\aether-ai-integrations\src\Aether.AppAudit.AI\Aether.AppAudit.AI.csproj" />
-    <!-- ⑭ 链上钱包工具（Aether.Ledger.AI → ① aether-ledger）——**两端共享**：钱包是纯客户端
-         （RPC + 本地签名），节点地址由宿主配置（ledger.json）给出。签名库已于 2026-10-27 换成
-         纯托管 BouncyCastle Ed25519（签名字节不变，见 ① 的 LedgerEd25519ParityTests），
-         因此不再拖 libsodium 原生库进闭包——iOS 链接问题消失，Android/iOS/桌面同一份实现。 -->
-    <ProjectReference Include="..\..\..\aether-ai-integrations\src\Aether.Ledger.AI\Aether.Ledger.AI.csproj" />
     <!-- ⑫ MCP 客户端（连接器）：stdio/HTTP 两种传输 + 目录配置 + 管理服务。手机端只接 HTTP——
          stdio 要 spawn 子进程，iOS 沙盒禁止；取舍在 BuildProvider（AddMcpServersFromDirectory 的 filter）。 -->
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Mcp\Aether.AI.Mcp.csproj" />
