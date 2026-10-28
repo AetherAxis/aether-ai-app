@@ -32,13 +32,21 @@ jobs:
         with:
           repository: AetherAxis/aether-ai-integrations
           path: aether-ai-integrations
+      # ⑭ 的传递依赖：Aether.Ledger.AI 引 ① aether-ledger（LedgerWalletTool 用 LedgerClient /
+      # LedgerWallet / LedgerAddress / LedgerSupply）。⑮ 会构建 ⑭，所以 ⑭ 的依赖链也必须在这里齐全——
+      # 漏了只会在 runner 上炸成 warning MSB9008 + 一串 CS0246，本地永远看不出来（16 仓并排全解析得到）。
+      - uses: actions/checkout@v4
+        with:
+          repository: AetherAxis/aether-ledger
+          path: aether-ledger
       # 防复发：csproj 里每个 `..\..\..\<repo>\…` 都必须在同级目录存在，否则 MSB3202。
-      # 本地工作区永远解析得到（14 仓并排），只有干净的 CI runner 会暴露——所以在这断言。
+      # ⚠ 扫描范围必须包含**本仓会构建的兄弟仓**（⑭），否则正是这次那种漏检：
+      # 本仓 csproj 干净、⑭ 的 csproj 引了未 checkout 的仓，断言却被判绿。
       - name: Assert cross-repo checkouts match csproj references
         shell: bash
         run: |
           missing=0
-          for ref in $(grep -rhoE '(\.\.[\\/]){3}[A-Za-z0-9._-]+' aether-ai-app --include='*.csproj' \
+          for ref in $(grep -rhoE '(\.\.[\\/]){3}[A-Za-z0-9._-]+' aether-ai-app aether-ai-integrations --include='*.csproj' \
                        | sed -E 's/^(\.\.[\\/]){3}//' | sort -u); do
             if [ ! -d "$ref" ]; then
               echo "::error::csproj 引用了兄弟仓 '$ref'，但 CI 没有 checkout 它（见上方 checkout 列表）"
