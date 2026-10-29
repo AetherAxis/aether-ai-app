@@ -159,13 +159,16 @@ internal static class Program
             .LogToTrace();
 
     /// <summary>
-    /// 两断言：① rule-demo 全链路（BrainMatrix 同构）；② rule-approve 审批循环（resolver 自动批 →
-    /// ⑫ RunInteractiveAsync 恢复轮 → 工具执行 → 终答）——覆盖新引擎的审批缝。
+    /// 两断言（2026-10-29 起走真实工具——Echo 演示工具已移除）：
+    /// ① rule-demo 全链路：ReadFile 读临时文件 → done:{JSON 结果含内容}；
+    /// ② rule-approve 审批循环：resolver 自动批 → ⑫ RunInteractiveAsync 恢复轮 → DeleteFile **真删临时文件** → 终答
+    /// （副作用 = 文件确实没了——端到端最硬的断言）。
     /// </summary>
     private static async Task SmokeAsync()
     {
         var dir = Path.Combine(Path.GetTempPath(), "aether-ai-app-smoke");
         try { Directory.Delete(dir, true); } catch { /* 无旧档 */ }
+        Directory.CreateDirectory(dir);
 
         var ok = true;
         try
@@ -174,20 +177,25 @@ internal static class Program
             var provider = App.BuildProvider(dir, includeDemoAgents: true);
             var runner = provider.GetRequiredService<IAgentRunner>();
 
-            var full1 = await runner.RunInteractiveAsync(Guid.NewGuid(), "rule-demo", "查600000");
-            var pass1 = full1 == "done:echo:600000";
+            var readFile = Path.Combine(dir, "read-me.txt");
+            await File.WriteAllTextAsync(readFile, "600000");
+            var full1 = await runner.RunInteractiveAsync(Guid.NewGuid(), "rule-demo", $"读{readFile}");
+            var pass1 = full1.StartsWith("done:") && full1.Contains("600000", StringComparison.Ordinal);
             Console.WriteLine(pass1
-                ? "[smoke] 1/2 PASS ✅ rule-demo 全链路：done:echo:600000"
-                : $"[smoke] 1/2 FAIL ❌ 期望 done:echo:600000，实得 {full1}");
+                ? "[smoke] 1/2 PASS ✅ rule-demo 全链路（ReadFile 真读文件）"
+                : $"[smoke] 1/2 FAIL ❌ 期望 done:{{...600000...}}，实得 {full1}");
             ok &= pass1;
 
-            var full2 = await runner.RunInteractiveAsync(Guid.NewGuid(), "rule-approve", "报单IF2406",
+            var delFile = Path.Combine(dir, "to-delete.txt");
+            await File.WriteAllTextAsync(delFile, "冒烟道具");
+            var full2 = await runner.RunInteractiveAsync(Guid.NewGuid(), "rule-approve", $"删除{delFile}",
                 approvalResponder: (req, ct) => Task.FromResult<ToolApprovalDecision?>(
                     new ToolApprovalDecision(req.RequestId, Approved: true, Reason: "冒烟自动批", AlwaysApprove: false)));
-            var pass2 = full2 == "已执行：echo:IF2406";
+            var pass2 = full2.StartsWith("已执行") && full2.Contains("已删除文件", StringComparison.Ordinal)
+                        && !File.Exists(delFile);
             Console.WriteLine(pass2
-                ? "[smoke] 2/2 PASS ✅ rule-approve 审批自恢复：已执行：echo:IF2406"
-                : $"[smoke] 2/2 FAIL ❌ 期望 已执行：echo:IF2406，实得 {full2}");
+                ? "[smoke] 2/2 PASS ✅ rule-approve 审批自恢复（DeleteFile 真删文件，副作用已核）"
+                : $"[smoke] 2/2 FAIL ❌ 回复={full2}；文件仍在？{File.Exists(delFile)}");
             ok &= pass2;
         }
         catch (Exception ex)

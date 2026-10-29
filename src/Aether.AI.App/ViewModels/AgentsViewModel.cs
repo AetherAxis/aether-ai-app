@@ -108,7 +108,7 @@ public partial class AgentsViewModel : ObservableObject
     private readonly ICodeCompilationService _compilation;
     private readonly IUiDispatcher _dispatcher;
 
-    /// <summary>新建代码大脑时的起步模板：一个能直接跑通的 Echo 示例。</summary>
+    /// <summary>新建代码大脑时的起步模板：一个能直接跑通的真工具示例（读用户给的路径）。</summary>
     public const string CodeTemplate = """
         // 代码大脑：继承 CodeRuleBrain，重写 RunAsync()。框架负责把 Call(...) 变成工具调用并回填结果。
         // 可用：UserText（本轮用户消息）、History、Step、LastResult、RunCancellationToken
@@ -120,8 +120,9 @@ public partial class AgentsViewModel : ObservableObject
         {
             protected override async Task<string> RunAsync()
             {
-                var echo = await Call("Echo", new { text = UserText });
-                return "代码大脑收到：" + echo;
+                // 本轮用户消息当文件路径读（Call 返回工具结果的 JSON 文本）
+                var content = await Call("ReadFile", new { filePath = UserText });
+                return "代码大脑读到：" + content;
             }
         }
         """;

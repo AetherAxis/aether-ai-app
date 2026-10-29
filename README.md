@@ -42,7 +42,6 @@
 | **应用审查 3 个（ListAuditTasks / SaveAppVerdict / ReadAppVerdict）** | ✅ | ✅ | **取任务 + 写/读结论，不含判定逻辑**——页面只发布任务，agent 自己查证据判、把结论写回同一份记录。只用本地 JSON，Safe 级不触发审批 |
 | **浏览器 7 个（open / get_cookies / get_requests / close + **操作三件套** read / click / type）** | ❌ | ✅ | Playwright **headed 独立 OS 窗口**（用户手动登录），agent 读页面（`browser_read`）、点元素/填表单（`browser_click`/`browser_type`，Playwright selector）、取请求流 / cookie（拼 CookieHeader 给 curl 带访问需登录接口）。工具/服务在 ⑭ `Aether.Browser.AI`、面板 UI 在桌面 head `Browser/`；手机端**连注册都不发生**（桌面 head 的 `HeadToolsConfigure` 钩子，移动 head 不设）。`browser_get_cookies` / `browser_click` / `browser_type` = **Confirm**（动凭证、动已登录会话须过审批——审批卡可勾「总是允许」） |
 | **终端 1 个（run_in_terminal）** | ❌ | ✅ | 在**可见**集成终端执行命令——真实 PTY / 完整登录 env（含 .zshrc）/ 可观察可中断（超时后进程继续在终端跑，可手动 Ctrl-C）。与 `ExecuteShellCommand` 分工：后者静默管道拿干净输出。工具在 ⑭ `Aether.Terminal.AI`、面板在本仓桌面 head `Terminal/`；Dangerous + DesktopOnly |
-| Echo（演示/回显） | ✅ | ✅ | 两端都在，用于审批演示与冒烟 |
 
 ### 三、技能包与连接器
 
@@ -184,11 +183,11 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 |---|---|---|
 | LLM | 系统提示词、模型档案（可设「跟随当前选中档案」）、允许的工具、工具审批开关、是否开 4 档模式 | `EngineKind.Llm` + `Instructions`/`ModelId`/`Tools`/`RequireToolApproval`/`EnableAgentModeProvider` |
 | 规则 | 触发正则、动作工具（可空=直接回复）、工具参数 JSON 模板、回复模板、未命中兜底 | `EngineKind.Rule` + `RuleProgram`（调工具时自动生成两步：trigger(MaxToolCalls=0) → reply(MinToolCalls=1)） |
-| 代码 | 一段继承 `CodeRuleBrain` 的 C# 源码（重写 `RunAsync`，`await Call("Echo", ...)` 调工具）、允许的工具、工具审批开关 | `EngineKind.Code` + ⑫ 编译管线：`CustomAgentStore` → `AgentCodeNoteSource`（`ICodeNoteSource`）→ `ICodeCompilationService`（Roslyn，可卸载 ALC）→ `ICodeBrainRegistry`，跑起来就是标准 code brain |
+| 代码 | 一段继承 `CodeRuleBrain` 的 C# 源码（重写 `RunAsync`，`await Call("ReadFile", ...)` 调真实工具）、允许的工具、工具审批开关 | `EngineKind.Code` + ⑫ 编译管线：`CustomAgentStore` → `AgentCodeNoteSource`（`ICodeNoteSource`）→ `ICodeCompilationService`（Roslyn，可卸载 ALC）→ `ICodeBrainRegistry`，跑起来就是标准 code brain |
 
 - 代码大脑 Roslyn **只在桌面 head** 注册（`Program.Main` 里 `App.ServicesConfigure = s => s.AddCSharpBrainCompilation()`）——移动闭包不带 Roslyn/FCS，移动端遇到代码 agent 会明确报「未注册 C# 编译器」。
 - 保存即编译：`store.Save` → `Changed` → `ICodeCompilationService.Reload`（500ms 去抖，后台线程）；编译失败显示在列表那一行的红字 + 保存状态条里，不是静默失败。
-- 源码没有隐式 using（`Task`、`List` 等要自己 using）；模板里已写好一个能跑通的 Echo 示例。
+- 源码没有隐式 using（`Task`、`List` 等要自己 using）；模板里已写好一个能跑通的真工具示例（ReadFile）。
 
 - 存储 `<dataDir>/agents.json`（`CustomAgentStore`，原子写；与 `llm-configs.json` 同款形态，但**不含机密**故不做 0600）。
 - **生效链不重启**：`App.BuildProvider` 的 `DynamicAgents` 把 `store.Agents` 映射进 agent 目录（每次枚举求值）；
@@ -204,7 +203,7 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
   不展开也能看状态、也能整组打勾；组内 `ToolOption` 与平铺集合同实例，保存/载入逻辑零改动（分组纯展示层）。
   单测 `ToolGroupingTests` 5 例。
 - 单测 `tests/…App.Tests/CustomAgentTests.cs`：JSON 往返、两类映射、正则/JSON 校验、
-  保存后进目录 + 聊天下拉 + **规则 agent 真跑一轮（Echo 全链路）**、删除后消失、管理哨兵不重置会话。
+  保存后进目录 + 聊天下拉 + **规则 agent 真跑一轮（ReadFile 真链路）**、删除后消失、管理哨兵不重置会话。
 
 **2026-10-27：取消「内置 agent」这一档**（用户反馈“压根不需要内置 agent，内置 agent 也是可以管理编辑删除的，
 只留一个通用助手就行，通用助手也能管理”）。目录从此**只有一个来源**：`<dataDir>/agents.json`。
@@ -224,12 +223,12 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 继承——`CardBgBrush/SurfaceBrush/BorderBrush/AccentBrush` 解析失败，卡片变纯白、`primary` 只剩白字。
 修法：`AppDialogs.ApplyTheme(dialog)` 在开关窗时叠加 + 跟随 `IThemeHost.ThemeChanged` 重染；
 同时把卡片里的动作按钮从透明 `Button.ghost` 换成「浅底 + 描边」的 `Button.outline`（静止态可见）。
-单测 `tests/…App.Tests/CustomAgentTests.cs` 新增 3 例：代码大脑映射 / **真编译跑一轮（Echo 全链路）** /
+单测 `tests/…App.Tests/CustomAgentTests.cs` 新增 3 例：代码大脑映射 / **真编译跑一轮（ReadFile 真链路）** /
 编译失败显示在列表行上。
 
 ### M2-tools（2026-10-27）：⑭ 工具真接入（手机 / 桌面**同一条**注册路径）
 
-此前 ⑮ 的工具注册表里只有演示用的 `Echo`——agent 勾得到工具，却全是空的。现在把 ⑭ 适配器接进来：
+此前 ⑮ 的工具注册表里只有演示用的 `Echo`（**2026-10-29 已移除**——真实工具齐备；demo agent 改走 ReadFile/DeleteFile 真链路）——agent 勾得到工具，却全是空的。现在把 ⑭ 适配器接进来：
 
 | 分组 | 工具 | 来源 | 宿主 |
 |---|---|---|---|
@@ -249,9 +248,9 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 - UI 与服务端口径一致：agent 编辑页的工具勾选列表改用 `ToolRegistry.GetUsableMetas()`（新增，过滤口径与
   `ResolveAll` 逐条相同）——手机上不会出现「执行命令」，桌面上也不会有手机专属工具。
 
-**验收**：`--tools` 打印当前宿主可用工具清单（桌面 28 个 = 系统 16 + 应用审查 3 + **浏览器 7** + **终端 1** + Echo；手机 18 个 = 系统 14 + 应用审查 3 + Echo；
-2026-10-29 终端 +1、浏览器 4→7，加入前为 20/18，2026-10-28 移除钱包 4 个前为 24/22）；
-`tests/…App.Tests/AppToolWiringTests.cs` 5 例覆盖：手机宿主不含命令工具（且未注册）、Echo 等级、
+**验收**：`--tools` 打印当前宿主可用工具清单（桌面 27 个 = 系统 16 + 应用审查 3 + **浏览器 7** + **终端 1**；手机 17 个 = 系统 14 + 应用审查 3；
+2026-10-29 移除 Echo 演示工具 -1、终端 +1、浏览器 4→7，加入前为 20/18，2026-10-28 移除钱包 4 个前为 24/22）；
+`tests/…App.Tests/AppToolWiringTests.cs` 4 例覆盖：手机宿主不含命令工具（且未注册）、
 桌面专属工具「注册但不可勾选且 ResolveAll 跳过」、head 钩子语义、以及**真解析 ReadFile 真读文件**。
 桌面 head / Android / iOS 三个 TFM 均编译通过（iOS 链接也已通过）。
 

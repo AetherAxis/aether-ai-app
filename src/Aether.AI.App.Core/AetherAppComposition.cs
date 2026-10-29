@@ -15,23 +15,24 @@ namespace Aether.AI.App.Core;
 /// </summary>
 public static class DefaultAgents
 {
-    /// <summary>规则演示：BrainMatrix 同构——「查600000 → Echo 工具 → done:echo:600000」，无 key 全链路。</summary>
-    public static AgentDefinition RuleDemo(string echoTool = "Echo") => new()
+    /// <summary>规则演示：无 key 全链路——「读&lt;文件路径&gt; → ReadFile 工具 → done:{结果}」。
+    /// 2026-10-29 起指向真实工具（Echo 演示工具已随真工具齐备移除）；输入的文件由调用方备好（smoke/demo 各自落临时文件）。</summary>
+    public static AgentDefinition RuleDemo(string tool = "ReadFile") => new()
     {
         Id = "rule-demo",
         Name = "规则演示",
         Instructions = string.Empty,
         Engine = EngineKind.Rule,
         Memory = AgentMemoryMode.Off,
-        Tools = new[] { echoTool },
+        Tools = new[] { tool },
         Rules = new RuleProgram
         {
             Steps = new()
             {
                 new RuleStep
                 {
-                    Match = new() { OnUserRegex = "^查(.+)$", MaxToolCalls = 0 },
-                    Action = new() { Tool = echoTool, Args = new() { ["text"] = "{user.1}" } },
+                    Match = new() { OnUserRegex = "^读(.+)$", MaxToolCalls = 0 },
+                    Action = new() { Tool = tool, Args = new() { ["filePath"] = "{user.1}" } },
                 },
                 new RuleStep
                 {
@@ -42,15 +43,16 @@ public static class DefaultAgents
         },
     };
 
-    /// <summary>审批演示：规则链路 + Dangerous 工具 + RequireToolApproval——跑一遍即走完整审批协作循环（无 key）。</summary>
-    public static AgentDefinition ApprovalDemo(string echoTool = "Echo") => new()
+    /// <summary>审批演示：规则链路 + Dangerous 工具（DeleteFile）+ RequireToolApproval——跑一遍即走完整审批协作循环（无 key）。
+    /// 输入「删除&lt;文件路径&gt;」：批准后文件**真的被删**（端到端副作用断言）；拒绝则文件保留。</summary>
+    public static AgentDefinition ApprovalDemo(string tool = "DeleteFile") => new()
     {
         Id = "rule-approve",
         Name = "审批演示",
         Instructions = string.Empty,
         Engine = EngineKind.Rule,
         Memory = AgentMemoryMode.Off,
-        Tools = new[] { echoTool },
+        Tools = new[] { tool },
         RequireToolApproval = true,
         Rules = new RuleProgram
         {
@@ -58,8 +60,8 @@ public static class DefaultAgents
             {
                 new RuleStep
                 {
-                    Match = new() { OnUserRegex = "^(?:报单|买)(.+)$", MaxToolCalls = 0 },
-                    Action = new() { Tool = echoTool, Args = new() { ["text"] = "{user.1}" } },
+                    Match = new() { OnUserRegex = "^(?:删除|删)(.+)$", MaxToolCalls = 0 },
+                    Action = new() { Tool = tool, Args = new() { ["filePath"] = "{user.1}" } },
                 },
                 new RuleStep
                 {

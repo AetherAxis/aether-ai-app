@@ -156,16 +156,20 @@ public partial class App : Application
 
             await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
             {
-                // 目标列表 InitializeAsync 已填好。
+                // 目标列表 InitializeAsync 已填好。道具文件走临时目录（demo agent = ReadFile/DeleteFile 真链路）。
+                var readFile = Path.Combine(Path.GetTempPath(), "aether-demo-read.txt");
+                await File.WriteAllTextAsync(readFile, "600000");
                 vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "rule-demo");
-                vm.InputText = "查600000";
+                vm.InputText = $"读{readFile}";
                 await vm.SendInputCommand.ExecuteAsync(null);
             });
 
             await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
             {
+                var delFile = Path.Combine(Path.GetTempPath(), "aether-demo-delete.txt");
+                await File.WriteAllTextAsync(delFile, "待删除");
                 vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "rule-approve");
-                vm.InputText = "报单IF2406";
+                vm.InputText = $"删除{delFile}";
                 await vm.SendInputCommand.ExecuteAsync(null);   // → bottom sheet 弹出并挂起等审批
             });
 
@@ -300,13 +304,8 @@ public partial class App : Application
         // iOS 沙盒禁止 fork，`ExecuteCommand`/`ExecuteShellCommand` 在手机端连注册都跳过
         // （文件/搜索/FetchUrl 是纯托管 + 网络，两端同源可用）。
         aether.AddSystemTools(includeCommandTools: isDesktop);
-        // Echo 演示工具：Dangerous 等级（审批演示 agent 的 RequireToolApproval 会拦它走审批循环；
-        // 不开审批的 agent 照常直跑——等级只在审批开启时参与门控）。
-        aether.ConfigureToolRegistry(registry => registry.Register(
-            "Echo", "回声演示工具：原样返回输入", "Demo",
-            _ => AIFunctionFactory.Create((Func<string, string>)(text => $"echo:{text}"), "Echo"),
-            ToolApprovalLevel.Dangerous));
-        // head 专属工具（当前无消费者；设了 = 只有该 head 注册这些工具）。
+        // Echo 演示工具已于 2026-10-29 移除（真实工具齐备；demo agent 改走 ReadFile/DeleteFile 真链路）。
+        // head 专属工具（设了 = 只有该 head 注册这些工具：浏览器的 HeadToolsConfigure 首个消费者）。
         HeadToolsConfigure?.Invoke(aether, dataDir);
 
         services.AddSingleton(capabilities);   // 设置页「技能包与连接器」区要显示这两个目录

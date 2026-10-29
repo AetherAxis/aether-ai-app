@@ -60,15 +60,6 @@ public class AppToolWiringTests : IDisposable
         Assert.False(registry.Contains("ExecuteCommand"));
     }
 
-    /// <summary>共享组合根自带的演示工具（Echo）也在，审批等级原样带出——Agent 编辑页的勾选列表靠它。</summary>
-    [Fact]
-    public void 演示工具Echo_出现在可用列表且为危险级()
-    {
-        var registry = Build().GetRequiredService<ToolRegistry>();
-        var echo = Assert.Single(registry.GetUsableMetas(), m => m.Name == "Echo");
-        Assert.Equal(ToolApprovalLevel.Dangerous, echo.ApprovalLevel);
-    }
-
     /// <summary>UI 过滤口径 = 运行时口径：命令工具仍注册着（桌面会用到），但在手机宿主下不可勾选。</summary>
     [Fact]
     public void 桌面专属工具_注册但手机宿主不可勾选_且ResolveAll跳过()

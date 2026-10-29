@@ -68,6 +68,14 @@ public class ChatViewModelIntegrationTests : IDisposable
         await vm.SendInputCommand.ExecuteAsync(null);
     }
 
+    /// <summary>在数据目录里落一个道具文件（demo agent 走 ReadFile/DeleteFile 真链路要真文件）。</summary>
+    private string Fixture(string name, string content)
+    {
+        var path = Path.Combine(_dataDir, $"{name}-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(path, content);
+        return path;
+    }
+
     /// <summary>规则演示全链路：目标选择→发送→工具卡（call+result 配对）→终答→持久化→侧栏条目。</summary>
     [Fact]
     public async Task Rule_demo_roundtrip_persists_and_renders_tool_card()
@@ -75,65 +83,71 @@ public class ChatViewModelIntegrationTests : IDisposable
         var vm = await CreateChatAsync(_dataDir, new AutoApproveDialog());
         Assert.Contains(vm.AgentTargetItems, t => t.Id == "rule-demo");
 
+        var message = $"读{Fixture("roundtrip", "600000")}";
         vm.SelectedAgentTarget = Target(vm, "rule-demo");   // 用户切换 → 开新会话
-        await SendAsync(vm, "查600000");
+        await SendAsync(vm, message);
 
         Assert.False(vm.IsAgentRunning);                    // 轮次收敛
         var turn = Assert.Single(vm.Messages);
-        Assert.Equal("查600000", turn.Header);
+        Assert.Equal(message, turn.Header);
         Assert.True(turn.IsDone);
 
-        // children：用户气泡 + 工具卡（Echo，call+result 合一）+ 终答段。
+        // children：用户气泡 + 工具卡（ReadFile，call+result 合一）+ 终答段。
         Assert.True(turn.Children[0].IsUserText);
         var tool = turn.Children.FirstOrDefault(i => i.IsToolStep);
         Assert.NotNull(tool);
-        Assert.Equal("Echo", tool!.ToolName);
+        Assert.Equal("ReadFile", tool!.ToolName);
         Assert.True(tool.IsToolCompleted);
-        Assert.Equal("echo:600000", tool.Output?["result"]?.ToString());
+        Assert.Contains("600000", tool.ResultText);   // 归一化主结果（POCO 结果按属性摊开，无 result 键）
         var answer = turn.Children.FirstOrDefault(i => i.IsAgentMarkdownText);
         Assert.NotNull(answer);
-        Assert.Equal("done:echo:600000", answer!.Content);
+        Assert.StartsWith("done:", answer!.Content);
 
         // 侧栏：会话已建 + bumped。
         var item = Assert.Single(vm.Conversations);
         Assert.Equal("rule-demo", item.AgentId);
-        Assert.Contains("done:echo:600000", item.Preview);
+        Assert.Contains("done:", item.Preview);
     }
 
-    /// <summary>审批演示·批准路径：审批卡转已批准 → 工具执行 → 终答「已执行：…」。</summary>
+    /// <summary>审批演示·批准路径：审批卡转已批准 → DeleteFile 真删文件 → 终答「已执行：…」。</summary>
     [Fact]
     public async Task Approval_demo_approve_path_executes_tool_after_dialog()
     {
         var vm = await CreateChatAsync(_dataDir, new AutoApproveDialog());
+        var target = Fixture("approve", "待删");
         vm.SelectedAgentTarget = Target(vm, "rule-approve");
-        await SendAsync(vm, "报单IF2406");
+        await SendAsync(vm, $"删除{target}");
 
         var turn = Assert.Single(vm.Messages);
         var card = turn.Children.FirstOrDefault(i => i.IsApprovalCard);
         Assert.NotNull(card);
         Assert.Equal(1, card!.ApprovalState);               // 已批准
-        Assert.Equal("Echo", card.ToolName);
+        Assert.Equal("DeleteFile", card.ToolName);
 
         var tool = turn.Children.FirstOrDefault(i => i.IsToolStep);
         Assert.NotNull(tool);
         Assert.True(tool!.IsToolCompleted);                 // 批准后恢复轮执行了工具
+        Assert.False(File.Exists(target));                  // 真实副作用：文件被删了
         var answer = turn.Children.FirstOrDefault(i => i.IsAgentMarkdownText);
-        Assert.Equal("已执行：echo:IF2406", answer?.Content);
+        Assert.StartsWith("已执行", answer?.Content);
+        Assert.Contains("已删除文件", answer?.Content);
     }
 
-    /// <summary>审批演示·取消路径：resolver null → 卡转拒绝、工具不执行、turn 正常收敛。</summary>
+    /// <summary>审批演示·取消路径：resolver null → 卡转拒绝、工具不执行（文件保留）、turn 正常收敛。</summary>
     [Fact]
     public async Task Approval_demo_cancel_path_rejects_card_and_skips_tool()
     {
         var vm = await CreateChatAsync(_dataDir, new CancelDialog());
+        var target = Fixture("cancel", "保留我");
         vm.SelectedAgentTarget = Target(vm, "rule-approve");
-        await SendAsync(vm, "报单IF2406");
+        await SendAsync(vm, $"删除{target}");
 
         var turn = Assert.Single(vm.Messages);
         var card = turn.Children.FirstOrDefault(i => i.IsApprovalCard);
         Assert.NotNull(card);
         Assert.Equal(2, card!.ApprovalState);               // 已拒绝（取消）
         Assert.DoesNotContain(turn.Children, i => i.IsToolStep && i.IsToolCompleted);
+        Assert.True(File.Exists(target));                   // 拒绝 = 文件还在
         Assert.True(turn.IsDone);                           // 非错误收敛
     }
 
@@ -142,9 +156,10 @@ public class ChatViewModelIntegrationTests : IDisposable
     public async Task Restart_same_directory_restores_conversation_and_history()
     {
         // 第一进程：跑一轮并持久化。
+        var message = $"读{Fixture("restart", "600000")}";
         var vm1 = await CreateChatAsync(_dataDir, new AutoApproveDialog());
         vm1.SelectedAgentTarget = Target(vm1, "rule-demo");
-        await SendAsync(vm1, "查600000");
+        await SendAsync(vm1, message);
         Assert.Single(vm1.Conversations);
 
         // 第二进程（同目录）：新组合根 + 新 VM。
@@ -154,11 +169,11 @@ public class ChatViewModelIntegrationTests : IDisposable
 
         await vm2.ResumeConversationCommand.ExecuteAsync(item);
         var turn = Assert.Single(vm2.Messages);             // transcript 重建
-        Assert.Equal("查600000", turn.Header);
+        Assert.Equal(message, turn.Header);
         var tool = turn.Children.FirstOrDefault(i => i.IsToolStep);
         Assert.NotNull(tool);
         Assert.True(tool!.IsToolCompleted);                 // call+result 按 CallId 重新配对
-        Assert.Equal("done:echo:600000", turn.Children.First(i => i.IsAgentMarkdownText).Content);
+        Assert.StartsWith("done:", turn.Children.First(i => i.IsAgentMarkdownText).Content);
 
         // 续聊不丢 seq：再发一轮 → 两轮并存。
         await SendAsync(vm2, "查000001");

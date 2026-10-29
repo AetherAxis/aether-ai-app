@@ -53,33 +53,33 @@ public class CustomAgentTests : IDisposable
     private static CustomAgent RuleAgent(string id = "custom-echo") => new()
     {
         Id = id,
-        Name = "回显员",
-        Description = "把参数回显出来",
+        Name = "读文件员",
+        Description = "把指定路径的文件读回来",
         Kind = CustomAgentKind.Rule,
-        MatchRegex = "^查(.+)$",
-        ToolName = "Echo",
-        ToolArgsTemplate = "{\"text\":\"{user.1}\"}",
+        MatchRegex = "^读(.+)$",
+        ToolName = "ReadFile",
+        ToolArgsTemplate = "{\"filePath\":\"{user.1}\"}",
         ReplyTemplate = "done:{result}",
         RequireToolApproval = false,
     };
 
-    /// <summary>代码大脑：一段继承 <c>CodeRuleBrain</c> 的源码，跑起来调 Echo。</summary>
+    /// <summary>代码大脑：一段继承 <c>CodeRuleBrain</c> 的源码，跑起来调真实的 ReadFile。</summary>
     private static CustomAgent CodeAgent(string id = "custom-code") => new()
     {
         Id = id,
         Name = "代码员",
         Description = "一段 C# 源码",
         Kind = CustomAgentKind.Code,
-        Tools = new[] { "Echo" },
+        Tools = new[] { "ReadFile" },
         RequireToolApproval = false,
         SourceCode = """
             using System.Threading.Tasks;
             using Aether.AI.Brains.Code;
 
-            public sealed class EchoBrain : CodeRuleBrain
+            public sealed class ReadBrain : CodeRuleBrain
             {
                 protected override async Task<string> RunAsync()
-                    => "code:" + await Call("Echo", new { text = UserText });
+                    => "code:" + await Call("ReadFile", new { filePath = UserText });
             }
             """,
     };
@@ -101,7 +101,7 @@ public class CustomAgentTests : IDisposable
         var reloaded = new CustomAgentStore(path);   // 模拟重启
         Assert.Equal(2, reloaded.Agents.Count);
         Assert.Equal(CustomAgentKind.Rule, reloaded.Agents[0].Kind);
-        Assert.Equal("Echo", reloaded.Agents[0].ToolName);
+        Assert.Equal("ReadFile", reloaded.Agents[0].ToolName);
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class CustomAgentTests : IDisposable
             Kind = CustomAgentKind.Llm,
             Instructions = "你是严格的代码评审员。",
             ModelProfile = "DeepSeek",
-            Tools = new[] { "Echo" },
+            Tools = new[] { "ReadFile", "Grep" },
             RequireToolApproval = true,
             EnableModePicker = true,
         });
@@ -134,7 +134,7 @@ public class CustomAgentTests : IDisposable
         Assert.Equal("custom-reviewer", def.Id);
         Assert.Equal("审代码", def.Description);
         Assert.Equal("DeepSeek", def.ModelId);           // 档案名 → 客户端工厂按名解析
-        Assert.Equal(new[] { "Echo" }, def.Tools);
+        Assert.Equal(new[] { "ReadFile", "Grep" }, def.Tools);
         Assert.True(def.RequireToolApproval);
         Assert.True(def.EnableAgentModeProvider);
         Assert.True(def.EnableTodoProvider);
@@ -149,13 +149,13 @@ public class CustomAgentTests : IDisposable
         Assert.NotNull(def.Rules);
         var steps = def.Rules!.Steps;
         Assert.Equal(2, steps.Count);
-        Assert.Equal("^查(.+)$", steps[0].Match.OnUserRegex);
+        Assert.Equal("^读(.+)$", steps[0].Match.OnUserRegex);
         Assert.Equal(0, steps[0].Match.MaxToolCalls);          // 只在本轮第一次工具调用前命中
-        Assert.Equal("Echo", steps[0].Action.Tool);
-        Assert.Equal("{user.1}", steps[0].Action.Args!["text"]);
+        Assert.Equal("ReadFile", steps[0].Action.Tool);
+        Assert.Equal("{user.1}", steps[0].Action.Args!["filePath"]);
         Assert.Equal(1, steps[1].Match.MinToolCalls);
         Assert.Equal("done:{result}", steps[1].Action.ReplyText);
-        Assert.Equal(new[] { "Echo" }, def.Tools);
+        Assert.Equal(new[] { "ReadFile" }, def.Tools);
     }
 
     [Fact]
@@ -184,11 +184,11 @@ public class CustomAgentTests : IDisposable
 
         Assert.Equal(EngineKind.Code, def.Engine);
         Assert.Equal(CodeBrainLanguage.CSharp, def.CodeLanguage);
-        Assert.Equal(new[] { "Echo" }, def.Tools);
+        Assert.Equal(new[] { "ReadFile" }, def.Tools);
         Assert.False(def.RequireToolApproval);
     }
 
-    /// <summary>端到端：保存 → 编译（Roslyn）→ 进目录 → 聊天里真跑一轮（源码内部调 Echo 工具）。</summary>
+    /// <summary>端到端：保存 → 编译（Roslyn）→ 进目录 → 聊天里真跑一轮（源码内部调真实的 ReadFile）。</summary>
     [Fact]
     public async Task Code_agent_compiles_and_runs_a_turn()
     {
@@ -197,6 +197,9 @@ public class CustomAgentTests : IDisposable
         var compilation = provider.GetRequiredService<ICodeCompilationService>();
         var vm = provider.GetRequiredService<ChatViewModel>();
         await vm.InitializeAsync();
+
+        var fixture = Path.Combine(_dataDir, "code-fixture.txt");
+        await File.WriteAllTextAsync(fixture, "你好世界");
 
         store.Save(new[] { CodeAgent() });
         await Task.Run(() => compilation.LoadAsync());          // 组合根已挂 Reload，这里显式等一轮编译
@@ -208,14 +211,15 @@ public class CustomAgentTests : IDisposable
         Assert.Equal("⌨", target.DisplayIcon);                   // 代码大脑图标
 
         vm.SelectedAgentTarget = target;
-        vm.InputText = "你好";
+        vm.InputText = fixture;                                  // 用户消息 = 文件路径，brain 里当 filePath 用
         await vm.SendInputCommand.ExecuteAsync(null);
 
         var turn = Assert.Single(vm.Messages);
         var tool = turn.Children.FirstOrDefault(i => i.IsToolStep);
-        Assert.Equal("Echo", tool?.ToolName);
+        Assert.Equal("ReadFile", tool?.ToolName);
         var answer = turn.Children.FirstOrDefault(i => i.IsAgentMarkdownText);
-        Assert.Equal("code:echo:你好", answer?.Content);
+        Assert.Contains("code:", answer?.Content);
+        Assert.Contains("你好世界", answer?.Content);
     }
 
     /// <summary>坏源码：不注册、错误进 LoadErrors，并在管理窗那一行上显示（不是静默失败）。</summary>
@@ -314,23 +318,27 @@ public class CustomAgentTests : IDisposable
         store.Save(new[] { RuleAgent() });
 
         var def = Assert.Single(await catalog.GetAllAsync(), a => a.Id == "custom-echo");
-        Assert.Equal("回显员", def.Name);
-        Assert.Equal("把参数回显出来", def.Description);
+        Assert.Equal("读文件员", def.Name);
+        Assert.Equal("把指定路径的文件读回来", def.Description);
 
         await vm.RefreshAgentTargetsAsync();             // 渲染层热刷新（Changed 也已触发，这里显式等一次）
         var target = vm.AgentTargetItems.First(t => t.Id == "custom-echo");
         Assert.Equal("🧭", target.DisplayIcon);           // 规则大脑图标
 
+        var fixture = Path.Combine(_dataDir, "rule-fixture.txt");
+        await File.WriteAllTextAsync(fixture, "600000");
+
         vm.SelectedAgentTarget = target;
-        vm.InputText = "查600000";
+        vm.InputText = $"读{fixture}";
         await vm.SendInputCommand.ExecuteAsync(null);
 
         var turn = Assert.Single(vm.Messages);
         var tool = turn.Children.FirstOrDefault(i => i.IsToolStep);
-        Assert.Equal("Echo", tool?.ToolName);
-        Assert.Equal("echo:600000", tool?.Output?["result"]?.ToString());
+        Assert.Equal("ReadFile", tool?.ToolName);
+        Assert.Contains("600000", tool?.ResultText);   // 归一化主结果（POCO 结果按属性摊开，无 result 键）
         var answer = turn.Children.FirstOrDefault(i => i.IsAgentMarkdownText);
-        Assert.Equal("done:echo:600000", answer?.Content);
+        Assert.StartsWith("done:", answer?.Content);
+        Assert.Contains("600000", answer?.Content);
     }
 
     /// <summary>下拉末项「管理 agent…」= 管理入口：选中它只发意图、弹回原 agent，**不**触发「切目标开新会话」。</summary>
@@ -341,8 +349,10 @@ public class CustomAgentTests : IDisposable
         var vm = provider.GetRequiredService<ChatViewModel>();
         await vm.InitializeAsync();
 
+        var fixture = Path.Combine(_dataDir, "manage-fixture.txt");
+        await File.WriteAllTextAsync(fixture, "x");
         vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "rule-demo");
-        vm.InputText = "查600000";
+        vm.InputText = $"读{fixture}";
         await vm.SendInputCommand.ExecuteAsync(null);
 
         var manage = Assert.Single(vm.AgentTargetItems, t => t.IsManage);
