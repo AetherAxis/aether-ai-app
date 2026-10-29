@@ -8,6 +8,8 @@
     <RootNamespace>Aether.AI.App.Desktop</RootNamespace>
     <AssemblyName>Aether.AI.App.Desktop</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 反射绑定（与 App 层同款）——Browser/ 等面板视图的 {Binding} 走运行时解析 -->
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +18,8 @@
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
+    <!-- Browser/ 面板 VM 的 [ObservableProperty]/[RelayCommand] 源生成器 -->
+    <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +27,10 @@
     <!-- 代码大脑的 Roslyn 编译器：**只在桌面 head 引用**（App 层只依赖纯抽象管线），
          移动 head 不背 Roslyn/FCS——代码 agent 在移动端会明确报「未注册 C# 编译器」。 -->
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Brains.Code.Compilation.CSharp\Aether.AI.Brains.Code.Compilation.CSharp.csproj" />
+    <!-- ⑭ 浏览器工具模块（Playwright headed 会话 + 4 个 agent 工具）：**只在桌面 head 引用**——
+         移动 head 不背 Playwright（iOS 沙盒禁子进程 + AOT 闭包卫生），浏览器工具在移动端连注册都不发生。
+         面板 UI 在本 head 的 Browser/ 目录（AddBrowserPanel 一并注册）。 -->
+    <ProjectReference Include="..\..\..\aether-ai-integrations\src\Aether.Browser.AI\Aether.Browser.AI.csproj" />
   </ItemGroup>
 
 </Project>

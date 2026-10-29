@@ -1,0 +1,220 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:Aether.AI.App.Browser"
+             xmlns:b="using:Aether.Browser.AI"
+             x:Class="Aether.AI.App.Browser.BrowserView"
+             Background="{DynamicResource ContentBgBrush}">
+    <!-- 自 monorepo Acme.Desktop.Shared Shell/Browser port（2026-10-29）。与原版差异：
+         ① 详情体不用 AvaloniaEdit（⑮ 不带编辑器栈）——只读 TextBox + JSON 美化，无语法高亮；
+         ② 关闭按钮 ✕ 文本替代 Codicons；③ AccentTintBgBrush/CornerRadiusXs → ⑮ 在场的 SurfaceBrush/定值圆角。
+         模型/服务/工具在 ⑭ Aether.Browser.AI（xmlns b）；本文件属桌面 head（移动形态不编译不注册）。 -->
+    <UserControl.Styles>
+        <Style Selector="TextBlock.mono">
+            <Setter Property="FontFamily" Value="Cascadia Code,Menlo,monospace"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style Selector="TextBox.detail">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="AcceptsReturn" Value="True"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="FontFamily" Value="Cascadia Code,Menlo,monospace"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="6,4"/>
+        </Style>
+        <Style Selector="Border.tabrow">
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="Margin" Value="0,0,2,0"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource CardBgBrush}"/>
+        </Style>
+        <Style Selector="Border.tabrow.active">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+        </Style>
+        <!-- 详情 tab（Button 叠放切 IsVisible，不销毁保留滚动/渲染状态） -->
+        <Style Selector="Button.dtab">
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Margin" Value="0,0,2,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button.dtab.active">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <!-- 状态段按钮组 -->
+        <Style Selector="Button.fseg">
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Margin" Value="0,0,2,0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+        </Style>
+        <Style Selector="Button.fseg.active">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+        </Style>
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- 上下分栏：工具栏/标签/过滤栏/请求列表(上,*) + GridSplitter(4) + 详情(下,*) —— 可拖改变列表/详情比例 -->
+    <Grid RowDefinitions="Auto,Auto,Auto,*,4,*">
+        <!-- 工具栏：新建 + 地址栏 + 打开 + 清空 + 启动模式（宿主策略，对下一次新建会话生效） -->
+        <WrapPanel Grid.Row="0" Margin="6,3">
+            <Button Content="＋ 新建" Command="{Binding NewSessionCommand}" Padding="8,4" Margin="0,0,4,0"/>
+            <TextBox Text="{Binding AddressBar}" PlaceholderText="输入 URL 回车打开（如 example.com/login）" Width="300"
+                     KeyDown="OnAddressKeyDown" Margin="0,0,4,0"/>
+            <Button Content="打开" Command="{Binding NavigateCommand}" Padding="10,4" Margin="0,0,4,0"/>
+            <Button Content="清空" Command="{Binding ClearRequestsCommand}" Padding="8,4" Margin="0,0,8,0"/>
+            <StackPanel x:Name="ModeSegPanel" Orientation="Horizontal" VerticalAlignment="Center"
+                        ToolTip.Tip="启动模式（对下一次新建会话生效；两种模式共用同一 profile，登录态互通）&#10;常规：Playwright 启动——navigator.webdriver=true，站点一行 JS 可查（明牌）&#10;附加：本机浏览器普通启动 + 调试端口连入——webdriver=false；操作行为层仍可被行为分析识别，不承诺隐身">
+                <TextBlock Text="模式" Classes="muted" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <Button Classes="fseg" Content="常规" Click="OnModeSeg" Tag="Launch"/>
+                <Button Classes="fseg" Content="附加" Click="OnModeSeg" Tag="Attach"/>
+            </StackPanel>
+        </WrapPanel>
+
+        <!-- 会话标签条 -->
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding Sessions}" Margin="6,0,6,4">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="2"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="b:BrowserSessionItem">
+                    <Border Classes="tabrow" Classes.active="{Binding IsActive}" PointerPressed="OnTabPointerPressed">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding RequestCount, StringFormat='{}({0})'}" Classes="muted" VerticalAlignment="Center"/>
+                            <Button Padding="4,1" Background="Transparent" BorderThickness="0"
+                                    VerticalAlignment="Center"
+                                    Click="OnCloseTab"
+                                    ToolTip.Tip="关闭标签">
+                                <TextBlock Text="✕" FontSize="11"
+                                           Foreground="{Binding $parent[Button].Foreground}"/>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- 过滤栏：搜索框 + 段按钮 + 计数 -->
+        <WrapPanel Grid.Row="2" Margin="6,2" Orientation="Horizontal">
+            <TextBox Text="{Binding FilterText}" PlaceholderText="搜索 URL…" Width="180" Margin="0,0,6,0"/>
+            <StackPanel Orientation="Horizontal" Spacing="1" Margin="0,0,8,0">
+                <Button Classes="fseg active" Content="全部" Click="OnStatusSeg" Tag=""/>
+                <Button Classes="fseg" Content="2xx" Click="OnStatusSeg" Tag="2xx"/>
+                <Button Classes="fseg" Content="3xx" Click="OnStatusSeg" Tag="3xx"/>
+                <Button Classes="fseg" Content="4xx" Click="OnStatusSeg" Tag="4xx"/>
+                <Button Classes="fseg" Content="5xx" Click="OnStatusSeg" Tag="5xx"/>
+                <Button Classes="fseg" Content="错误" Click="OnStatusSeg" Tag="err"/>
+            </StackPanel>
+            <TextBlock VerticalAlignment="Center" Classes="muted">
+                <Run Text="{Binding FilteredCount}"/><Run Text="/"/><Run Text="{Binding TotalCount}"/><Run Text=" 条"/>
+            </TextBlock>
+        </WrapPanel>
+
+        <!-- 请求列表（DevTools Network 风格，绑 FilteredRequests） -->
+        <ListBox Grid.Row="3" ItemsSource="{Binding FilteredRequests}" SelectedItem="{Binding SelectedRequest}"
+                 Background="Transparent" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource BorderBrush}">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="b:NetworkRequestItem">
+                    <Grid ColumnDefinitions="54,48,42,52,72,56,*">
+                        <TextBlock Grid.Column="0" Text="{Binding Time, Converter={x:Static local:LocalTimeConverter.Instance}}" Classes="mono"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Method}" Classes="mono"/>
+                        <TextBlock Grid.Column="2" Text="{Binding Status}" Classes="mono" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <TextBlock Grid.Column="3" Text="{Binding DurationMs, StringFormat='{}{0}ms'}" Classes="muted"/>
+                        <TextBlock Grid.Column="4" Text="{Binding ResourceType}" Classes="muted"/>
+                        <TextBlock Grid.Column="5" Text="{Binding Size, StringFormat='{}{0}B'}" Classes="muted"/>
+                        <TextBlock Grid.Column="6" Text="{Binding Url}" TextTrimming="CharacterEllipsis" Classes="mono"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- GridSplitter：可拖改变列表/详情比例 -->
+        <GridSplitter Grid.Row="4" ResizeDirection="Rows" Height="4"
+                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                      Background="{DynamicResource BorderBrush}" Cursor="SizeNorthSouth"/>
+
+        <!-- 详情区（Tab：概览/请求/响应；叠放切 IsVisible 不销毁保留状态） -->
+        <Border Grid.Row="5" Background="{DynamicResource CardBgBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
+            <Panel>
+                <!-- 无选中请求时的占位提示 -->
+                <TextBlock Text="选择一条请求查看详情" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Classes="muted" IsVisible="{Binding SelectedRequest, Converter={x:Static ObjectConverters.IsNull}}"/>
+                <Grid ColumnDefinitions="*" RowDefinitions="Auto,*"
+                      IsVisible="{Binding SelectedRequest, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <!-- 详情 tab 条 -->
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="6,2" Spacing="0"
+                                Background="{DynamicResource ContentBgBrush}">
+                        <Button Classes="dtab active" Content="概览" Click="OnDetailTab" Tag="summary"/>
+                        <Button Classes="dtab" Content="请求" Click="OnDetailTab" Tag="request"/>
+                        <Button Classes="dtab" Content="响应" Click="OnDetailTab" Tag="response"/>
+                    </StackPanel>
+
+                    <!-- 概览 pane -->
+                    <ScrollViewer Grid.Row="1" x:Name="SummaryPane" Padding="8">
+                        <StackPanel Spacing="3">
+                            <TextBlock Classes="mono" Text="{Binding SelectedRequest.Url}" TextWrapping="Wrap"/>
+                            <Grid ColumnDefinitions="90,*"><TextBlock Grid.Column="0" Text="方法" Classes="muted"/><TextBlock Grid.Column="1" Text="{Binding SelectedRequest.Method}" Classes="mono"/></Grid>
+                            <Grid ColumnDefinitions="90,*"><TextBlock Grid.Column="0" Text="状态" Classes="muted"/><TextBlock Grid.Column="1" Classes="mono"><Run Text="{Binding SelectedRequest.Status}"/><Run Text=" "/><Run Text="{Binding SelectedRequest.StatusText}"/></TextBlock></Grid>
+                            <Grid ColumnDefinitions="90,*"><TextBlock Grid.Column="0" Text="耗时" Classes="muted"/><TextBlock Grid.Column="1" Text="{Binding SelectedRequest.DurationMs, StringFormat='{}{0}ms'}" Classes="mono"/></Grid>
+                            <Grid ColumnDefinitions="90,*"><TextBlock Grid.Column="0" Text="资源类型" Classes="muted"/><TextBlock Grid.Column="1" Text="{Binding SelectedRequest.ResourceType}" Classes="mono"/></Grid>
+                            <Grid ColumnDefinitions="90,*"><TextBlock Grid.Column="0" Text="MIME" Classes="muted"/><TextBlock Grid.Column="1" Text="{Binding SelectedRequest.MimeType}" Classes="mono" TextWrapping="Wrap"/></Grid>
+                            <Grid ColumnDefinitions="90,*"><TextBlock Grid.Column="0" Text="大小" Classes="muted"/><TextBlock Grid.Column="1" Text="{Binding SelectedRequest.Size, StringFormat='{}{0} 字节'}" Classes="mono"/></Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- 请求 pane（请求头 + 请求体） -->
+                    <Grid Grid.Row="1" x:Name="RequestPane" IsVisible="False" RowDefinitions="*,4,*">
+                        <Grid Grid.Row="0" RowDefinitions="Auto,*">
+                            <TextBlock Grid.Row="0" Text="请求头（含 Cookie）" FontWeight="SemiBold" FontSize="11" Margin="6,2"/>
+                            <TextBox Grid.Row="1" Classes="detail" x:Name="RequestHeadersBox"/>
+                        </Grid>
+                        <GridSplitter Grid.Row="1" ResizeDirection="Rows" Height="4"
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                      Background="{DynamicResource BorderBrush}" Cursor="SizeNorthSouth"/>
+                        <Grid Grid.Row="2" RowDefinitions="Auto,*">
+                            <TextBlock Grid.Row="0" Text="请求体" FontWeight="SemiBold" FontSize="11" Margin="6,2"/>
+                            <TextBox Grid.Row="1" Classes="detail" x:Name="RequestBodyBox"/>
+                        </Grid>
+                    </Grid>
+
+                    <!-- 响应 pane（响应头 + 响应体；二进制显占位） -->
+                    <Grid Grid.Row="1" x:Name="ResponsePane" IsVisible="False" RowDefinitions="*,4,*">
+                        <Grid Grid.Row="0" RowDefinitions="Auto,*">
+                            <TextBlock Grid.Row="0" Text="响应头（含 Set-Cookie）" FontWeight="SemiBold" FontSize="11" Margin="6,2"/>
+                            <TextBox Grid.Row="1" Classes="detail" x:Name="ResponseHeadersBox"/>
+                        </Grid>
+                        <GridSplitter Grid.Row="1" ResizeDirection="Rows" Height="4"
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                      Background="{DynamicResource BorderBrush}" Cursor="SizeNorthSouth"/>
+                        <Grid Grid.Row="2" RowDefinitions="Auto,*">
+                            <TextBlock Grid.Row="0" Text="响应体" FontWeight="SemiBold" FontSize="11" Margin="6,2"/>
+                            <TextBox Grid.Row="1" Classes="detail" x:Name="ResponseBodyBox"/>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Panel>
+        </Border>
+    </Grid>
+</UserControl>

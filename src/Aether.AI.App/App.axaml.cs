@@ -88,6 +88,14 @@ public partial class App : Application
             var window = new WorkbenchWindow { DataContext = shell };
             window.Show();
             desktop.MainWindow = window;
+            // 退出时释放容器：桌面 head 的浏览器（附加模式）自己 Process.Start 了浏览器进程、
+            // 不归 Playwright driver 代管——必须在进程退出前 await 杀掉，否则浏览器孤儿。
+            // 3s 上限 + 容错：退出路径尽力而为，不因个别服务卡死而拖住关窗。
+            desktop.ShutdownRequested += (_, _) =>
+            {
+                try { ((IAsyncDisposable)provider).DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3)); }
+                catch { /* 退出路径尽力而为 */ }
+            };
             _ = shell.InitializeAsync();          // 恢复布局 + 激活工作台（不阻塞首帧）
             _ = provider.GetRequiredService<ChatViewModel>().InitializeAsync();
             if (desktop.Args?.Contains("--dump-layout") == true) DumpLayoutAsync(window, desktop, shell);
@@ -278,6 +286,10 @@ public partial class App : Application
             // 工作笔记（EnableFileMemory）的根：每个 agent 一个子目录（⑫ 按 definition.Id 再拼一层）。
             // 不给根 = 该能力被静默禁用；桌面/手机都指向数据目录，所以两端行为一致。
             o.FileMemoryRoot = Path.Combine(dataDir, "agent-notes");
+            // 浏览器持久 profile（登录一次后续复用）。消费者 = 桌面专属切片 Aether.AI.App.Browser 的
+            // BrowserService（经桌面 head 的 HeadToolsConfigure 注册，此选项在此即单一定义点）；
+            // 移动端不注册浏览器服务，此选项空转无害。
+            o.BrowserProfileDir = Path.Combine(dataDir, "browser-profile");
             o.EnableSkillScripts = AiCapabilityPolicy.SupportsSkillScripts(isDesktop);
         });
         // 连接器（MCP）：HTTP/SSE 两端同源；stdio（command+args 起子进程）只在桌面。

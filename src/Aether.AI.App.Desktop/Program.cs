@@ -2,7 +2,9 @@ using System;
 using System.IO;
 using System.Linq;
 using Aether.AI.App;
+using Aether.AI.App.Browser;   // AddBrowserPanel（桌面 head 的浏览器面板注册口）
 using Aether.AI.App.Core;
+using Aether.Browser.AI;
 using Aether.AI.Brains.Code.Compilation.CSharp;
 using Aether.AI.Core.Agents;
 using Aether.AI.Harness.Tools;
@@ -16,13 +18,16 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // 显式声明桌面宿主：命令工具 / 钱包工具在无头巡检（--tools/--smoke/CI）里也要按桌面取舍。
+        // 显式声明桌面宿主：命令工具 / 浏览器工具在无头巡检（--tools/--smoke/CI）里也要按桌面取舍。
         App.HeadHost = HostCapability.DesktopOnly;
         // 代码大脑只在桌面形态可编译执行：把 Roslyn 编译器注入共享组合根（App.BuildProvider）。
         // 移动 head 不引本程序集，也就没有编译器——代码 agent 会明确回「未注册 C# 编译器」。
         App.ServicesConfigure = services => services.AddCSharpBrainCompilation();
-        // 链上钱包**不再**在 head 里接：它是纯客户端，已移到共享组合根
-        // （节点地址读 <dataDir>/ledger.json，桌面想指本机节点就填 127.0.0.1:17805）。
+        // 浏览器（Playwright headed 独立窗口 + 网络面板 + 7 个 agent 工具）：工具/服务在 ⑭ Aether.Browser.AI，
+        // 面板 UI 在本 head 的 Browser/——HeadToolsConfigure 钩子的第一个真实消费者（「依赖本机进程/窗口」的工具）。
+        // 移动 head 不设此钩子 ⇒ 浏览器工具连注册都不发生、Playwright 不进移动闭包。
+        // 启动模式（常规/附加）是宿主策略：browser.json 落盘，面板 chip 切换，对下一次新建会话生效。
+        App.HeadToolsConfigure = (aether, dataDir) => aether.AddBrowserPanel(dataDir);
 
         // 无头冒烟：与 GUI 完全同一条 DI 组合链（App.BuildProvider），跑规则大脑全链路 + 审批自恢复轮。
         // exit 0 = 通过——CI / 命令行验收用（L2 的无 GUI 等价物）。
@@ -33,7 +38,7 @@ internal static class Program
         }
 
         // 工具清单巡检：走真实组合（含桌面 head 钩子）打印**当前宿主可用**的工具——
-        // 验收「⑭ 工具是否真接上了」用（`--tools` 里应能看到 系统工具 + 链上钱包 两组）。
+        // 验收「⑭ 工具 + 浏览器工具是否真接上了」用（`--tools` 里应能看到 系统/应用审查/浏览器 各组）。
         if (args.Contains("--tools"))
         {
             DumpTools();
@@ -48,7 +53,95 @@ internal static class Program
             return;
         }
 
+        // 浏览器真链路冒烟：Playwright 真启动（headed，屏幕上会闪一个窗口）→ about:blank → 取 cookie（空也可）
+        // → 关会话。验证「驱动进程 + 浏览器启动（channel 自动探测）+ 生命周期清理」全链。
+        // 无 Chrome/Edge 且未 playwright install chromium 时 FAIL 并给指引（exit 1）。
+        if (args.Contains("--browser-smoke"))
+        {
+            BrowserSmokeAsync().GetAwaiter().GetResult();
+            return;
+        }
+
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
+
+    /// <summary>
+    /// 浏览器真链路冒烟（L2 无 GUI 交互等价物——浏览器窗口本身会闪现，但无需点按）：
+    /// ① 常规模式 EnsureOpenAsync 真启动（channel 未传 = 自动探测本机 Chrome/Edge）；
+    /// ② GetCookies 在 about:blank 上 Success；③ 常规模式操作三件套离线 E2E（data: URL 页，不依赖外网）；
+    /// ④ 附加模式（本机浏览器普通启动 + CDP 连入，webdriver=false 探针已实证）会话启动 + 同一套操作 E2E；
+    /// ⑤ 全部关闭后会话清空。五断言全过 = 两种模式的驱动/操作/清理全链健康。
+    /// </summary>
+    private static async Task BrowserSmokeAsync()
+    {
+        var ok = true;
+        try
+        {
+            var provider = App.BuildProvider();
+            var browser = provider.GetRequiredService<IBrowserService>();
+
+            // —— 常规（Launch）模式 ——
+            var session = await browser.EnsureOpenAsync("about:blank", null);
+            var pass1 = session.IsAlive;
+            Console.WriteLine(pass1
+                ? $"[browser-smoke] 1/5 PASS ✅ 常规模式会话启动（title={session.Title}）"
+                : "[browser-smoke] 1/5 FAIL ❌ 浏览器启动失败——装 Chrome/Edge，或执行 playwright install chromium");
+            ok &= pass1;
+
+            var cookies = await browser.GetCookiesAsync(session.Id);
+            var pass2 = cookies.Success;
+            Console.WriteLine(pass2
+                ? $"[browser-smoke] 2/5 PASS ✅ cookie 提取链路（{cookies.Cookies.Count} 条，about:blank 允许为空）"
+                : $"[browser-smoke] 2/5 FAIL ❌ {cookies.Error}");
+            ok &= pass2;
+
+            var opsLaunch = session.IsAlive && await OpsE2eAsync(browser, session.Id);
+            Console.WriteLine(opsLaunch
+                ? "[browser-smoke] 3/5 PASS ✅ 常规模式操作三件套 E2E（type→click→read）"
+                : "[browser-smoke] 3/5 FAIL ❌ 常规模式操作 E2E 失败（见上方各步输出）");
+            ok &= opsLaunch;
+            browser.CloseSession(session.Id);
+
+            // —— 附加（Attach）模式：本机浏览器普通启动 + CDP 连入 ——
+            var attach = await browser.EnsureOpenAsync("about:blank", null, BrowserLaunchMode.Attach);
+            var opsAttach = attach.IsAlive && await OpsE2eAsync(browser, attach.Id);
+            var pass4 = attach.IsAlive && opsAttach;
+            Console.WriteLine(pass4
+                ? "[browser-smoke] 4/5 PASS ✅ 附加模式 E2E（普通启动 + CDP 连入 + 操作三件套全通）"
+                : $"[browser-smoke] 4/5 FAIL ❌ 附加模式失败（alive={attach.IsAlive}——需本机 Chrome/Edge）");
+            ok &= pass4;
+
+            // 收尾走 app 退出路径（await 容器批量释放）：附加模式的浏览器进程是我们 Process.Start 的、
+            // 不归 Playwright driver 代管——kill 必须 await 落地，否则进程退出时后台清理被截断 → 浏览器孤儿。
+            // （DisposeAsync 在 BrowserService 具体类上——接口刻意不继承 IAsyncDisposable，免得 fake 都要补实现。）
+            await ((IAsyncDisposable)browser).DisposeAsync();
+            var pass5 = browser.GetSessions().Count == 0 && browser.ActiveSessionId is null;
+            Console.WriteLine(pass5
+                ? "[browser-smoke] 5/5 PASS ✅ 会话全部关闭干净（含附加模式进程 kill 落地）"
+                : "[browser-smoke] 5/5 FAIL ❌ 关闭后会话仍在列表");
+            ok &= pass5;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[browser-smoke] EXCEPTION ❌ {ex}");
+            ok = false;
+        }
+        Environment.ExitCode = ok ? 0 : 1;
+    }
+
+    /// <summary>操作三件套离线 E2E：data: URL 页上 type 填 #q → click 点 #b（把输入框值写进标题）→ read 断言。</summary>
+    private static async Task<bool> OpsE2eAsync(IBrowserService browser, Guid sessionId)
+    {
+        var opsPage = "data:text/html,<input id='q' value=''><button id='b' onclick=\"document.title=document.getElementById('q').value\">Go</button>";
+        await browser.NavigateAsync(sessionId, opsPage);
+        var typed = await browser.TypeAsync(sessionId, "css=#q", "aether-rocks");
+        var clicked = await browser.ClickAsync(sessionId, "css=#b");
+        var page = await browser.ReadPageAsync(sessionId);
+        var pass = typed.Success && clicked.Success && page.Success
+                   && page.Title == "aether-rocks" && page.Text.Contains("Go");
+        if (!pass)
+            Console.WriteLine($"[browser-smoke]   ops 明细：type={typed.Success}({typed.Error ?? "-"}) click={clicked.Success}({clicked.Error ?? "-"}) read={page.Success} title=\"{page.Title}\"");
+        return pass;
     }
 
     public static AppBuilder BuildAvaloniaApp()

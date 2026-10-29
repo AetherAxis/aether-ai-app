@@ -21,6 +21,9 @@
     <ProjectReference Include="..\..\src\Aether.AI.App\Aether.AI.App.csproj" />
     <!-- 代码大脑端到端测试要真编译（Roslyn）——与桌面 head 同一个编译器包 -->
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Brains.Code.Compilation.CSharp\Aether.AI.Brains.Code.Compilation.CSharp.csproj" />
+    <!-- 桌面 head：浏览器面板 VM（Browser/ 目录）+ ⑭ 浏览器工具模块的接线断言。
+         fake IBrowserService 测 VM/接线（不起 Playwright——单测不依赖浏览器二进制）。 -->
+    <ProjectReference Include="..\..\src\Aether.AI.App.Desktop\Aether.AI.App.Desktop.csproj" />
   </ItemGroup>
 
 </Project>

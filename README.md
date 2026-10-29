@@ -3,8 +3,9 @@
 ⑫ `aether-ai`（MAF 多大脑运行时）的统一 UI App——**方案A：Avalonia 单代码库，桌面 + Android + iOS**。
 一套 AXAML / ViewModel / Core，按平台调整主题、控件尺寸、手势与 safe-area。
 
-**当前状态（2026-10-28）**：M0 方案A 六项硬前提全过 → M1 桌面聊天 MVP → M2-lite 自定义大脑（LLM/规则/代码）
-→ M2-tools ⑭ 工具接入 → M2-caps 技能包 + 连接器 → M2-memory 记忆开关 → M2-wallet 链上钱包（**2026-10-28 随 AI 线去业务化移除**，见该节）→ M2-appaudit 应用审查页。正式结构在 `src/`
+**当前状态（2026-10-29）**：M0 方案A 六项硬前提全过 → M1 桌面聊天 MVP → M2-lite 自定义大脑（LLM/规则/代码）
+→ M2-tools ⑭ 工具接入 → M2-caps 技能包 + 连接器 → M2-memory 记忆开关 → M2-wallet 链上钱包（**2026-10-28 随 AI 线去业务化移除**，见该节）→ M2-appaudit 应用审查页
+→ M2-browser 浏览器面板（⑭ `Aether.Browser.AI` 工具 + 桌面 head `Browser/` 面板，见该节）。正式结构在 `src/`
 （App.Core 无 UI 引擎 + App 共享 UI + `.Desktop`/`.Android`/`.iOS` 三个 head + `tests/`）；
 `spike/` 是 M0 期的可丢原型，仅留作历史证据。
 **先看下节「平台能力对照」**——手机端与桌面端能做什么、差在哪，一张表说清。
@@ -13,7 +14,7 @@
 
 - ⑩ `aether-workbench`——桌面壳/主题引擎/布局（spike 仅验证移动 TFM 可引用 + 主题清单可加载）
 - ⑫ `aether-ai`——Hosting + Brains.Rule + Memory.Sqlite（**移动端闭包不带 Roslyn/FCS/LLM SDK 之外的重物**）
-- ⑭ `aether-ai-integrations`——系统工具 16 个（含 **WebSearch** 网搜；命令类仅桌面）+ 应用审查 3 个（`Aether.AppAudit.AI`，本仓只留页面）。~~链上钱包 4 个~~（2026-10-28 随 AI 线去业务化移除——AI 线本质可调任意工具，业务适配未来按需再加）
+- ⑭ `aether-ai-integrations`——系统工具 16 个（含 **WebSearch** 网搜；命令类仅桌面）+ 应用审查 3 个（`Aether.AppAudit.AI`，本仓只留页面）+ **浏览器 4 个（`Aether.Browser.AI`，2026-10-29：工具/Playwright 服务在 ⑭，面板 UI 在本仓桌面 head `Browser/`——桌面专属，移动 head 不引 ⇒ Playwright 不进移动闭包）**。~~链上钱包 4 个~~（2026-10-28 随 AI 线去业务化移除——AI 线本质可调任意工具，业务适配未来按需再加）
 
 ## 平台能力对照：手机端 / 桌面端（2026-10-27 实测口径）
 
@@ -38,6 +39,7 @@
 | FetchUrl（抓网页/PDF） | ✅ | ✅ | 纯 HTTP |
 | **ExecuteCommand / ExecuteShellCommand（起子进程）** | ❌ | ✅ | iOS 沙盒禁止 fork。手机端**连注册都不发生**（`includeCommandTools:false`），编辑页的工具列表里也没有它们 |
 | **应用审查 3 个（ListAuditTasks / SaveAppVerdict / ReadAppVerdict）** | ✅ | ✅ | **取任务 + 写/读结论，不含判定逻辑**——页面只发布任务，agent 自己查证据判、把结论写回同一份记录。只用本地 JSON，Safe 级不触发审批 |
+| **浏览器 7 个（open / get_cookies / get_requests / close + **操作三件套** read / click / type）** | ❌ | ✅ | Playwright **headed 独立 OS 窗口**（用户手动登录），agent 读页面（`browser_read`）、点元素/填表单（`browser_click`/`browser_type`，Playwright selector）、取请求流 / cookie（拼 CookieHeader 给 curl 带访问需登录接口）。工具/服务在 ⑭ `Aether.Browser.AI`、面板 UI 在桌面 head `Browser/`；手机端**连注册都不发生**（桌面 head 的 `HeadToolsConfigure` 钩子，移动 head 不设）。`browser_get_cookies` / `browser_click` / `browser_type` = **Confirm**（动凭证、动已登录会话须过审批——审批卡可勾「总是允许」） |
 | Echo（演示/回显） | ✅ | ✅ | 两端都在，用于审批演示与冒烟 |
 
 ### 三、技能包与连接器
@@ -67,6 +69,7 @@
 | 模型档案管理（CRUD + 测试连接 + 切换免重启） | ✅ 内嵌浮层 | ✅ 模态窗 | 同一份 `LlmProfilesView` |
 | **设置页**（外观主题 / 重置布局） | ❌ | ✅ | 设置页挂在 ⑩ 工作台的 nav rail 齿轮上；移动形态没有 nav rail（移动壳属 M3）。**但其「能力」内容手机可达**：`CapabilitiesView`（技能包 / 连接器）已挂到手机「模型设置」浮层的「能力」页签 |
 | **应用审查页**（发布任务 + 显示结论） | ✅ 「模型设置 → 审查」页签 | ✅ nav rail 独立 tab | 同一份 `AppAuditView`/VM；**页面不搜不判**，结论由 agent 通过工具写回同一份 `app-audit.json`，见 M2-appaudit |
+| **浏览器面板**（会话标签 + 请求流 + 详情） | ❌ | ✅ nav rail 独立 tab | 桌面 head `Browser/BrowserView`；浏览器画面是 Playwright 独立 OS 窗口，面板只观测请求流（agent 与用户开的会话同一个），见 M2-browser |
 | 布局持久化、分隔条、多 tab | ❌ | ✅ | 桌面壳专属；移动是单视图全屏 |
 | 主题 | 固定浅色 overlay | 4 套主题可切 | 移动端 `ThemeLoader.Apply` 直接叠在根视图上 |
 
@@ -76,6 +79,7 @@
 |---|:--:|:--:|
 | `--smoke`（规则全链路 + 审批自恢复） | ❌ | ✅ |
 | `--llm-smoke`（真模型一轮流式对话） | ❌ | ✅ |
+| `--browser-smoke`（Playwright 真启动 + cookie 提取 + 干净关闭三断言） | ❌ | ✅ |
 | `--tools`（当前宿主可用工具清单） | ❌ | ✅ |
 | `--dump-layout`（版式几何转储）、Avalonia DeveloperTools | ❌ | ✅ |
 
@@ -238,8 +242,8 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 - UI 与服务端口径一致：agent 编辑页的工具勾选列表改用 `ToolRegistry.GetUsableMetas()`（新增，过滤口径与
   `ResolveAll` 逐条相同）——手机上不会出现「执行命令」，桌面上也不会有手机专属工具。
 
-**验收**：`--tools` 打印当前宿主可用工具清单（桌面 20 个 = 系统 16 + 应用审查 3 + Echo；手机 18 个 = 系统 14 + 应用审查 3 + Echo；
-2026-10-28 移除钱包 4 个前为 24/22）；
+**验收**：`--tools` 打印当前宿主可用工具清单（桌面 27 个 = 系统 16 + 应用审查 3 + **浏览器 7** + Echo；手机 18 个 = 系统 14 + 应用审查 3 + Echo；
+2026-10-29 浏览器 4→7，加入前为 20/18，2026-10-28 移除钱包 4 个前为 24/22）；
 `tests/…App.Tests/AppToolWiringTests.cs` 5 例覆盖：手机宿主不含命令工具（且未注册）、Echo 等级、
 桌面专属工具「注册但不可勾选且 ResolveAll 跳过」、head 钩子语义、以及**真解析 ReadFile 真读文件**。
 桌面 head / Android / iOS 三个 TFM 均编译通过（iOS 链接也已通过）。
@@ -349,6 +353,62 @@ Ed25519 换库的回归（`LedgerEd25519ParityTests`）留在 ①，与 AI 线�
   skill 落盘/迁移）；本仓 58 例里只剩「页面动作」这一层。
 - 验收：桌面 `--tools` 有 `应用审查（3）`；`--dump-layout` 三档尺寸（1280/900/1792）该页无遮挡、无横向溢出。
 
+### M2-browser（2026-10-29）：浏览器面板 + agent 浏览器工具（桌面专属）
+
+自 monorepo 桌面端 `Acme.Desktop.Shared/Shell/Browser` port（BrowserService/BrowserTool/接口原样，面板 View/VM 随迁简化）。
+**切法（用户定调「提供给 AI 调用的工具就进 ⑭」）**：工具 + Playwright 服务（UI-free）在 ⑭ `Aether.Browser.AI`，
+面板 UI 在本仓**桌面 head** `src/Aether.AI.App.Desktop/Browser/`——不与三平台 head 并列成新项目（桌面形态的功能待在桌面 head 里）。
+
+**形态**：浏览器画面是 Playwright 驱动的 **headed Chromium 独立 OS 窗口**（用户在这里手动登录/操作）；
+app 内「浏览器」tab 只是该会话的**网络观测面板**（DevTools Network 式：请求流 + 状态/耗时/大小 + 请求/响应头体详情，
+上下分栏可拖、URL 关键词 + 状态码段过滤、会话标签条多开）。**agent 与用户共用同一 service 单例**——
+agent `browser_open` 开的会话，用户在面板上看得见（同 run_in_terminal 口径）。
+
+**工作流**：`browser_open(url=登录页)` → 用户手动登录（验证码/二步验证人干）→ agent `browser_read()` 看页面 →
+`browser_click()` / `browser_type()` 操作（**Confirm 审批卡**，可勾「总是允许」）→ `browser_get_cookies()` 拿凭证走
+`curl -s -H "Cookie: …"` 访问需登录接口；`browser_get_requests` 顺带发现 API 端点。**操作三件套与观测/凭证四件共用同一
+session**（登录态 + 面板观测 + 审批门都在其上）——agent 的每一次点击，你都在独立窗口里实时看得见。
+
+**操作三件套**（2026-10-29 同批补齐，selector 用 Playwright 语法：`text=登录` / `role=button[name="提交"]` / `css=#id` / `xpath=`）：
+
+| 工具 | 等级 | 语义 |
+|---|---|---|
+| `browser_read` | Safe | URL + 标题 + 正文可见文本（innerText，~2 万字截断）——agent 的"眼睛"，操作前先读页决定点哪 |
+| `browser_click` | Confirm | 点元素（10s 超时，报错含选择器供 agent 自纠）；点击后等 DOMContentLoaded ≤3s 回传落点 URL |
+| `browser_type` | Confirm | 填输入框（fill 语义=整体替换）；`pressEnter` 供无按钮的搜索框 |
+
+已知边界：`target=_blank` 新标签页不在跟踪内（会话单页模型，同 monorepo 原版）；页面操作选择器找不到时约 10s 超时——
+agent 换 selector 重试（报错原文透传）。
+
+**启动模式开关（2026-10-29 同批，宿主策略——agent 不参与决策）**：面板工具栏「模式」chip，两档：
+
+| 档 | 机制 | `navigator.webdriver` |
+|---|---|---|
+| 常规（默认） | Playwright 直接启动（channel 自动探测本机 Chrome/Edge） | `true`（明牌，站点一行 JS 可查） |
+| **附加** | 本机浏览器**普通启动**（仅 `--remote-debugging-port` + 同一 profile，无自动化标志）→ Playwright 经 CDP 连入 | **`false`**（2026-10-29 探针实证；操作行为层——无轨迹点击/瞬时输入——仍可被行为分析识别，**不承诺隐身**） |
+
+落 `<dataDir>/browser.json`，**对下一次新建会话生效**（运行中会话不动——模式是会话的出生属性）；两模式共用同一
+profile，登录态互通、来回切零成本；agent 的 `browser_open` 遵循同一默认（工具不暴露 mode 参数）。附加模式需本机装有
+Chrome/Edge（无则明确报错）。**进程纪律**：附加模式的浏览器是我们自己 `Process.Start` 的、不归 Playwright driver
+代管——app 退出经容器 `DisposeAsync` await 杀掉（`ShutdownRequested` 钩子 + 3s 上限），否则浏览器孤儿（冒烟 5/5 钉死）。
+
+| 项 | 落位 / 取值 |
+|---|---|
+| 工具注册 | 桌面 head `Program.Main` 设 `App.HeadToolsConfigure = aether.AddBrowserPanel`——该钩子的**第一个真实消费者**（「依赖本机进程/窗口」的工具）；移动 head 不设 ⇒ 连注册都不发生 |
+| 工具等级 | open / get_requests / close = Safe；**get_cookies = Confirm** |
+| 宿主能力 | 4 个工具全 `DesktopOnly`——agents.json 跨端同步误带勾选时手机端 `ResolveAll` 兜底跳过 |
+| 持久 profile | `<dataDir>/browser-profile`（BuildProvider 设 `AetherAIOptions.BrowserProfileDir`，⑭ 服务读取）——登录一次后续复用，不碰日常浏览器 |
+| channel | 未指定时自动探测本机 Chrome/Edge（`BrowserChannel.DetectDefault`，免 `playwright install chromium` ~150MB）；都没有才用 Playwright 自带 chromium |
+| 负载逻辑（照搬 monorepo 踩坑件） | 请求 1000 条上限丢最旧 + body 32k 字符截断（总内存 ~64MB 封顶）+ 150ms 去抖合批；per-session 操作锁串行化；app 退出容器 `DisposeAsync` 批量释放（防 Chromium 进程残留） |
+| port 时的修正 | monorepo `CloseSession` 关光会话后 `ActiveSessionId` 落 `Guid.Empty` 而非 null（`LastOrDefault()` 装箱陷阱）——工具层误判「还有活跃会话」，已修（⑭ BrowserService） |
+| 与原版差异 | 详情体不用 AvaloniaEdit（⑮ 无编辑器栈）——只读 TextBox + JSON 美化，无语法高亮；图标 ✕ 文本替代 Codicons |
+
+**验收**：⑭ `tests/Aether.Browser.AI.Tests` 13 例（fake service 工具行为，含操作三件套）+ 本仓 `BrowserToolWiringTests` 3 例（桌面注册 7 个、
+等级断言 / 手机连注册都不发生 / 误挂载被宿主能力兜底）+ `BrowserViewModelTests` 5 例（投影/过滤/命令）；
+`--tools` 桌面 27 个含「浏览器（7）」组；**`--browser-smoke` 五断言全过**（常规模式真启动 + cookie 提取链路 + 操作三件套离线 E2E
+（data: URL 页 type→click→read 闭环，不依赖外网）+ **附加模式同套 E2E**（普通启动 + CDP 连入）+ 容器释放关闭
+（含附加模式进程 kill 落地），exit 0），退出后无浏览器/驱动进程残留。
+
 ### 移动端（方案A 实证，2026-10-24）
 
 同一份 ChatView/ChatViewModel/Core 直跑 iOS 与 Android（`src/Aether.AI.App.{iOS,Android}` head）：
@@ -377,6 +437,7 @@ dotnet test tests/Aether.AI.App.Tests              # 47 例（含工具接线 / 
 dotnet run --project src/Aether.AI.App.Desktop     # GUI
 dotnet run --project src/Aether.AI.App.Desktop -- --smoke       # 规则全链路 + 审批自恢复（exit 0 = L2 无 GUI 等价）
 dotnet run --project src/Aether.AI.App.Desktop -- --llm-smoke    # LLM 真模型冒烟（需已配置档案；无档案 SKIP）
+dotnet run --project src/Aether.AI.App.Desktop -- --browser-smoke # 浏览器真链路五断言（常规+附加两种模式真启动、操作 E2E、干净关闭；屏幕会闪浏览器窗口）
 dotnet run --project src/Aether.AI.App.Desktop -- --dump-layout  # 版式诊断：三档窗口尺寸 × 各 tab 的视觉树几何 → %TEMP%/aether-layout-*.txt
 dotnet run --project src/Aether.AI.App.Desktop -- --tools        # 工具巡检：当前宿主可用工具（分类/审批等级）+ 被过滤项
 # 实测（2026-10-24，DeepSeek）：deepseek-chat 流式 token 段>0 ✅；deepseek-reasoner reasoning 段>0（💭 思考卡路径）✅
