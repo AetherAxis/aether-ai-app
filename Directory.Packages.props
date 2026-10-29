@@ -13,6 +13,9 @@
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
     <!-- markdown 渲染（与 monorepo 桌面端同款；Tight 变体无外部 HTML 依赖，移动端更稳） -->
     <PackageVersion Include="Markdown.Avalonia.Tight" Version="12.0.0-a3" />
+    <!-- 集成终端控件（RoyalTerminal：SkiaSharp 渲染 + 自带 PTY；Unix resize 防抖见 Desktop head Terminal/）。
+         只进桌面 head（移动闭包不背）；版本与 monorepo 同线（要求 Avalonia >=12.1.1，⑮ 在 12.1.4 满足）。 -->
+    <PackageVersion Include="RoyalApps.RoyalTerminal.Avalonia" Version="0.5.2" />
     <PackageVersion Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.0.1.15" />
   </ItemGroup>
 

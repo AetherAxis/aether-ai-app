@@ -4,6 +4,7 @@ using System.Linq;
 using Aether.AI.App;
 using Aether.AI.App.Browser;   // AddBrowserPanel（桌面 head 的浏览器面板注册口）
 using Aether.AI.App.Core;
+using Aether.AI.App.Terminal;  // AddTerminalPanel（桌面 head 的终端面板注册口）
 using Aether.Browser.AI;
 using Aether.AI.Brains.Code.Compilation.CSharp;
 using Aether.AI.Core.Agents;
@@ -23,11 +24,15 @@ internal static class Program
         // 代码大脑只在桌面形态可编译执行：把 Roslyn 编译器注入共享组合根（App.BuildProvider）。
         // 移动 head 不引本程序集，也就没有编译器——代码 agent 会明确回「未注册 C# 编译器」。
         App.ServicesConfigure = services => services.AddCSharpBrainCompilation();
-        // 浏览器（Playwright headed 独立窗口 + 网络面板 + 7 个 agent 工具）：工具/服务在 ⑭ Aether.Browser.AI，
-        // 面板 UI 在本 head 的 Browser/——HeadToolsConfigure 钩子的第一个真实消费者（「依赖本机进程/窗口」的工具）。
-        // 移动 head 不设此钩子 ⇒ 浏览器工具连注册都不发生、Playwright 不进移动闭包。
-        // 启动模式（常规/附加）是宿主策略：browser.json 落盘，面板 chip 切换，对下一次新建会话生效。
-        App.HeadToolsConfigure = (aether, dataDir) => aether.AddBrowserPanel(dataDir);
+        // 浏览器（⑭ Aether.Browser.AI 工具 + 本 head Browser/ 面板）与终端（⑭ Aether.Terminal.AI 的
+        // run_in_terminal 工具 + 本 head Terminal/ 面板——RoyalTerminal 真实 PTY）：HeadToolsConfigure 钩子的
+        // 桌面专属消费者。移动 head 不设此钩子 ⇒ 两套工具连注册都不发生、Playwright/RoyalTerminal 不进移动闭包。
+        // 浏览器启动模式（常规/附加）是宿主策略：browser.json 落盘，面板 chip 切换，对下一次新建会话生效。
+        App.HeadToolsConfigure = (aether, dataDir) =>
+        {
+            aether.AddBrowserPanel(dataDir);
+            aether.AddTerminalPanel();
+        };
 
         // 无头冒烟：与 GUI 完全同一条 DI 组合链（App.BuildProvider），跑规则大脑全链路 + 审批自恢复轮。
         // exit 0 = 通过——CI / 命令行验收用（L2 的无 GUI 等价物）。

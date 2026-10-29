@@ -36,7 +36,62 @@ public sealed partial class ToolOption : ObservableObject
     public required string Name { get; init; }
     public required string Description { get; init; }
     public required string LevelLabel { get; init; }
+    /// <summary>所属类别（ToolMeta.Category；agent 编辑窗按它分组显示）。</summary>
+    public required string Category { get; init; }
     [ObservableProperty] private bool _isSelected;
+}
+
+/// <summary>工具类别分组（agent 编辑窗「允许的工具」按类别聚合并支持组头全选）：
+/// 组头三态勾选——勾 = 全选子工具、取消 = 全不选；子项部分选中时组头显示不定态。
+/// 组内 ToolOption 与 <see cref="AgentsViewModel.ToolOptions"/> 是**同一批实例**——保存/载入/清空
+/// 走平铺集合的既有逻辑零改动，分组纯展示层。</summary>
+public sealed partial class ToolGroup : ObservableObject
+{
+    public string Category { get; }
+    public ObservableCollection<ToolOption> Tools { get; } = new();
+    /// <summary>组头显示（类别名 + 数量，如「浏览器（7）」）。</summary>
+    public string Header => $"{Category}（{Tools.Count}）";
+
+    [ObservableProperty] private bool? _isChecked;
+
+    /// <summary>组是否展开（默认**收起**——组头勾选态不受影响：不展开也能看全选状态、也能整组打勾/取消；
+    /// 需要逐个勾选时点组头箭头展开）。</summary>
+    [ObservableProperty] private bool _isExpanded;
+
+    private bool _updatingFromChildren;
+
+    public ToolGroup(string category)
+    {
+        Category = category;
+    }
+
+    /// <summary>加子工具并挂回推：子项勾选变化 → 重算组头三态。</summary>
+    public void Add(ToolOption tool)
+    {
+        tool.PropertyChanged += (s, e) => { if (e.PropertyName == nameof(ToolOption.IsSelected)) Recompute(); };
+        Tools.Add(tool);
+    }
+
+    /// <summary>组头被写入（用户勾选/取消）：true=全选；false/null=全不选。
+    /// null 只出现在三态循环的「已全选→点击」路径（语义即取消全选）；不定态显示只由 <see cref="Recompute"/>
+    /// 回推产生、不落到子项。_updatingFromChildren 挡住回推引发的重放（否则部分选中会被误改成全选）。</summary>
+    partial void OnIsCheckedChanged(bool? value)
+    {
+        if (_updatingFromChildren) return;
+        var select = value == true;
+        foreach (var t in Tools) t.IsSelected = select;
+    }
+
+    /// <summary>子项变化回推组头：全选=true / 全不选=false / 部分=null（不定态）。</summary>
+    private void Recompute()
+    {
+        var selected = Tools.Count(t => t.IsSelected);
+        bool? next = selected == 0 ? false : selected == Tools.Count ? true : null;
+        if (next == IsChecked) return;
+        _updatingFromChildren = true;
+        try { IsChecked = next; }
+        finally { _updatingFromChildren = false; }
+    }
 }
 
 /// <summary>
@@ -88,7 +143,15 @@ public partial class AgentsViewModel : ObservableObject
                 Name = meta.Name,
                 Description = meta.Description,
                 LevelLabel = meta.ApprovalLevel.ToString(),
+                Category = meta.Category is { Length: > 0 } c ? c : "其他",
             });
+        }
+        // 按类别分组（组内是 ToolOptions 的同一批实例——保存/载入逻辑零改动）；首现序=注册序（浏览器/系统工具/…）。
+        foreach (var g in ToolOptions.GroupBy(t => t.Category, StringComparer.Ordinal))
+        {
+            var group = new ToolGroup(g.Key);
+            foreach (var t in g) group.Add(t);
+            ToolGroups.Add(group);
         }
 
         Reload();
@@ -137,6 +200,9 @@ public partial class AgentsViewModel : ObservableObject
     // —————————————— 共享选项 ——————————————
 
     public ObservableCollection<ToolOption> ToolOptions { get; } = new();
+
+    /// <summary>「允许的工具」的类别分组视图（组头全选/三态；组内 ToolOption 与 ToolOptions 同实例）。</summary>
+    public ObservableCollection<ToolGroup> ToolGroups { get; } = new();
 
     /// <summary>规则 agent 的「动作工具」下拉：空 = 不调工具（直接回复）。</summary>
     public ObservableCollection<string> RuleToolNames { get; } = new();

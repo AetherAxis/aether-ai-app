@@ -1,0 +1,84 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Aether.AI.App.Terminal.TerminalView"
+             Background="{DynamicResource ContentBgBrush}">
+  <!-- 自 monorepo Acme.Desktop.Shared Shell/TerminalView port（2026-10-29）。与原版差异：
+       ① 主题 token：SidebarBgBrush→SurfaceBrush、TerminalBgBrush→ContentBgBrush（⑮ 在场的键）；
+       ② 关闭按钮 ✕ 文本替代 Codicons；③ 服务经 ctor 注入（非 DesktopApp.Services 定位器）。 -->
+  <UserControl.Styles>
+    <!-- 终端标签按钮：活跃态加粗 + 亮底 -->
+    <Style Selector="Button.term-tab">
+      <Setter Property="Padding" Value="10,3"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="Button.term-tab:active /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource OnAccentBrush}"/>
+    </Style>
+    <Style Selector="Button.term-tab:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    </Style>
+    <Style Selector="Button.term-close">
+      <Setter Property="Padding" Value="6,2"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="Button.term-close:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+    </Style>
+    <Style Selector="Button.term-close:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <!-- 标签条：仅会话 tab（切换/关闭）。无 [+]（新建只在 agent 路径/自动补）与折叠按钮（⑮ 是 nav tab 形态）。 -->
+    <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" Padding="4,2">
+      <StackPanel Orientation="Horizontal" Spacing="2">
+        <ItemsControl ItemsSource="{Binding Sessions}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="2"/>
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Grid ColumnDefinitions="*,Auto">
+                <Button Grid.Column="0" Classes="term-tab"
+                        Command="{Binding $parent[UserControl].DataContext.SwitchSessionCommand}"
+                        CommandParameter="{Binding}">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="{Binding Title}"/>
+                    <!-- shell 已退出标记 -->
+                    <TextBlock Text="●" FontSize="8" Foreground="{DynamicResource DangerBrush}"
+                               IsVisible="{Binding !IsRunning}" VerticalAlignment="Center"/>
+                    <!-- 活跃会话下划线 -->
+                    <Border Height="2" Background="{DynamicResource AccentBrush}"
+                            IsVisible="{Binding IsActive}" VerticalAlignment="Bottom"/>
+                  </StackPanel>
+                </Button>
+                <Button Grid.Column="1" Classes="term-close"
+                        Command="{Binding $parent[UserControl].DataContext.CloseSessionCommand}"
+                        CommandParameter="{Binding}">
+                  <TextBlock Text="✕" FontSize="10"
+                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                </Button>
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
+    <!-- 终端控件宿主：每会话一个 RoyalTerminal TerminalControl，靠 IsVisible 切换。
+         无空态浮层/新建按钮——关掉最后一个会话由 TerminalService.CloseSession 自动补全新会话（面板恒有活终端）。
+         resize 防抖在 transport 层（TerminalResizeDebounce 包两个工厂）——本地网格实时重排，非布局冻结。 -->
+    <Grid Grid.Row="1" x:Name="ContentHost" Background="{DynamicResource ContentBgBrush}"/>
+  </Grid>
+</UserControl>

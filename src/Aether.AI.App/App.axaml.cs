@@ -188,7 +188,7 @@ public partial class App : Application
         WorkbenchShellViewModel shell)
     {
         await Task.Delay(2500);
-        var tabs = new[] { "chat", "app-audit", "settings" };   // 与 DesktopWorkspace.LayoutTabbed 的页签顺序一致
+        var tabs = new[] { "chat", "app-audit", "browser", "terminal", "settings" };   // 与 DesktopWorkspace.LayoutTabbed 的页签顺序一致
         foreach (var (w, h) in new[] { (1280.0, 820.0), (900.0, 600.0), (1792.0, 997.0) })
         {
             window.Width = w;

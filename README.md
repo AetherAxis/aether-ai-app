@@ -5,7 +5,8 @@
 
 **当前状态（2026-10-29）**：M0 方案A 六项硬前提全过 → M1 桌面聊天 MVP → M2-lite 自定义大脑（LLM/规则/代码）
 → M2-tools ⑭ 工具接入 → M2-caps 技能包 + 连接器 → M2-memory 记忆开关 → M2-wallet 链上钱包（**2026-10-28 随 AI 线去业务化移除**，见该节）→ M2-appaudit 应用审查页
-→ M2-browser 浏览器面板（⑭ `Aether.Browser.AI` 工具 + 桌面 head `Browser/` 面板，见该节）。正式结构在 `src/`
+→ M2-browser 浏览器面板（⑭ `Aether.Browser.AI` 工具 + 桌面 head `Browser/` 面板，见该节）
+→ M2-terminal 集成终端（⑭ `Aether.Terminal.AI` 的 run_in_terminal + 桌面 head `Terminal/` 面板，见该节）。正式结构在 `src/`
 （App.Core 无 UI 引擎 + App 共享 UI + `.Desktop`/`.Android`/`.iOS` 三个 head + `tests/`）；
 `spike/` 是 M0 期的可丢原型，仅留作历史证据。
 **先看下节「平台能力对照」**——手机端与桌面端能做什么、差在哪，一张表说清。
@@ -14,7 +15,7 @@
 
 - ⑩ `aether-workbench`——桌面壳/主题引擎/布局（spike 仅验证移动 TFM 可引用 + 主题清单可加载）
 - ⑫ `aether-ai`——Hosting + Brains.Rule + Memory.Sqlite（**移动端闭包不带 Roslyn/FCS/LLM SDK 之外的重物**）
-- ⑭ `aether-ai-integrations`——系统工具 16 个（含 **WebSearch** 网搜；命令类仅桌面）+ 应用审查 3 个（`Aether.AppAudit.AI`，本仓只留页面）+ **浏览器 4 个（`Aether.Browser.AI`，2026-10-29：工具/Playwright 服务在 ⑭，面板 UI 在本仓桌面 head `Browser/`——桌面专属，移动 head 不引 ⇒ Playwright 不进移动闭包）**。~~链上钱包 4 个~~（2026-10-28 随 AI 线去业务化移除——AI 线本质可调任意工具，业务适配未来按需再加）
+- ⑭ `aether-ai-integrations`——系统工具 16 个（含 **WebSearch** 网搜；命令类仅桌面）+ 应用审查 3 个（`Aether.AppAudit.AI`，本仓只留页面）+ **浏览器 7 个（`Aether.Browser.AI`，2026-10-29：工具/Playwright 服务在 ⑭，面板 UI 在本仓桌面 head `Browser/`——桌面专属，移动 head 不引 ⇒ Playwright 不进移动闭包）** + **终端 1 个（`Aether.Terminal.AI` 的 `run_in_terminal`，2026-10-29：工具在 ⑭，面板 UI 在桌面 head `Terminal/`——RoyalTerminal 真实 PTY，桌面专属）**。~~链上钱包 4 个~~（2026-10-28 随 AI 线去业务化移除——AI 线本质可调任意工具，业务适配未来按需再加）
 
 ## 平台能力对照：手机端 / 桌面端（2026-10-27 实测口径）
 
@@ -40,6 +41,7 @@
 | **ExecuteCommand / ExecuteShellCommand（起子进程）** | ❌ | ✅ | iOS 沙盒禁止 fork。手机端**连注册都不发生**（`includeCommandTools:false`），编辑页的工具列表里也没有它们 |
 | **应用审查 3 个（ListAuditTasks / SaveAppVerdict / ReadAppVerdict）** | ✅ | ✅ | **取任务 + 写/读结论，不含判定逻辑**——页面只发布任务，agent 自己查证据判、把结论写回同一份记录。只用本地 JSON，Safe 级不触发审批 |
 | **浏览器 7 个（open / get_cookies / get_requests / close + **操作三件套** read / click / type）** | ❌ | ✅ | Playwright **headed 独立 OS 窗口**（用户手动登录），agent 读页面（`browser_read`）、点元素/填表单（`browser_click`/`browser_type`，Playwright selector）、取请求流 / cookie（拼 CookieHeader 给 curl 带访问需登录接口）。工具/服务在 ⑭ `Aether.Browser.AI`、面板 UI 在桌面 head `Browser/`；手机端**连注册都不发生**（桌面 head 的 `HeadToolsConfigure` 钩子，移动 head 不设）。`browser_get_cookies` / `browser_click` / `browser_type` = **Confirm**（动凭证、动已登录会话须过审批——审批卡可勾「总是允许」） |
+| **终端 1 个（run_in_terminal）** | ❌ | ✅ | 在**可见**集成终端执行命令——真实 PTY / 完整登录 env（含 .zshrc）/ 可观察可中断（超时后进程继续在终端跑，可手动 Ctrl-C）。与 `ExecuteShellCommand` 分工：后者静默管道拿干净输出。工具在 ⑭ `Aether.Terminal.AI`、面板在本仓桌面 head `Terminal/`；Dangerous + DesktopOnly |
 | Echo（演示/回显） | ✅ | ✅ | 两端都在，用于审批演示与冒烟 |
 
 ### 三、技能包与连接器
@@ -70,6 +72,7 @@
 | **设置页**（外观主题 / 重置布局） | ❌ | ✅ | 设置页挂在 ⑩ 工作台的 nav rail 齿轮上；移动形态没有 nav rail（移动壳属 M3）。**但其「能力」内容手机可达**：`CapabilitiesView`（技能包 / 连接器）已挂到手机「模型设置」浮层的「能力」页签 |
 | **应用审查页**（发布任务 + 显示结论） | ✅ 「模型设置 → 审查」页签 | ✅ nav rail 独立 tab | 同一份 `AppAuditView`/VM；**页面不搜不判**，结论由 agent 通过工具写回同一份 `app-audit.json`，见 M2-appaudit |
 | **浏览器面板**（会话标签 + 请求流 + 详情） | ❌ | ✅ nav rail 独立 tab | 桌面 head `Browser/BrowserView`；浏览器画面是 Playwright 独立 OS 窗口，面板只观测请求流（agent 与用户开的会话同一个），见 M2-browser |
+| **终端面板**（多标签集成终端） | ❌ | ✅ nav rail 独立 tab | 桌面 head `Terminal/TerminalView`（RoyalTerminal 控件，真实 PTY——zsh 登录 shell）；⑩ 工作台「建全部 panel、切 tab 只切 IsVisible」⇒ PTY 跨 tab 切换不断；agent `run_in_terminal` 的命令打进当前活跃会话，见 M2-terminal |
 | 布局持久化、分隔条、多 tab | ❌ | ✅ | 桌面壳专属；移动是单视图全屏 |
 | 主题 | 固定浅色 overlay | 4 套主题可切 | 移动端 `ThemeLoader.Apply` 直接叠在根视图上 |
 
@@ -196,6 +199,10 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
   内嵌浮层（移动），宿同一份 `AgentsView` + `AgentsViewModel`；选中哨兵时 VM 把值弹回原 agent 并抛 `ManageAgentsRequested`，
   **不触发**「切目标开新会话」（`AgentTargetItem.IsManage` + `_lastAgentId` 回弹）。
   旧布局档案（含 agents tab）由 ⑩ 的 `CoversSameRegions` 判定结构变化后自动回退默认，无迁移负担。
+- **2026-10-29 工具勾选按类别分组（可展开/收起）**：「允许的工具」不再平铺——按 ToolRegistry 类别分组，组默认**收起**
+  （▸/▾ 折叠箭头切换展开），组头「类别（N）」**三态勾选**：勾=全选组内 / 取消=全不选 / 部分选中显示不定态——
+  不展开也能看状态、也能整组打勾；组内 `ToolOption` 与平铺集合同实例，保存/载入逻辑零改动（分组纯展示层）。
+  单测 `ToolGroupingTests` 5 例。
 - 单测 `tests/…App.Tests/CustomAgentTests.cs`：JSON 往返、两类映射、正则/JSON 校验、
   保存后进目录 + 聊天下拉 + **规则 agent 真跑一轮（Echo 全链路）**、删除后消失、管理哨兵不重置会话。
 
@@ -242,8 +249,8 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 - UI 与服务端口径一致：agent 编辑页的工具勾选列表改用 `ToolRegistry.GetUsableMetas()`（新增，过滤口径与
   `ResolveAll` 逐条相同）——手机上不会出现「执行命令」，桌面上也不会有手机专属工具。
 
-**验收**：`--tools` 打印当前宿主可用工具清单（桌面 27 个 = 系统 16 + 应用审查 3 + **浏览器 7** + Echo；手机 18 个 = 系统 14 + 应用审查 3 + Echo；
-2026-10-29 浏览器 4→7，加入前为 20/18，2026-10-28 移除钱包 4 个前为 24/22）；
+**验收**：`--tools` 打印当前宿主可用工具清单（桌面 28 个 = 系统 16 + 应用审查 3 + **浏览器 7** + **终端 1** + Echo；手机 18 个 = 系统 14 + 应用审查 3 + Echo；
+2026-10-29 终端 +1、浏览器 4→7，加入前为 20/18，2026-10-28 移除钱包 4 个前为 24/22）；
 `tests/…App.Tests/AppToolWiringTests.cs` 5 例覆盖：手机宿主不含命令工具（且未注册）、Echo 等级、
 桌面专属工具「注册但不可勾选且 ResolveAll 跳过」、head 钩子语义、以及**真解析 ReadFile 真读文件**。
 桌面 head / Android / iOS 三个 TFM 均编译通过（iOS 链接也已通过）。
@@ -409,6 +416,32 @@ Chrome/Edge（无则明确报错）。**进程纪律**：附加模式的浏览�
 （data: URL 页 type→click→read 闭环，不依赖外网）+ **附加模式同套 E2E**（普通启动 + CDP 连入）+ 容器释放关闭
 （含附加模式进程 kill 落地），exit 0），退出后无浏览器/驱动进程残留。
 
+### M2-terminal（2026-10-29）：集成终端 + run_in_terminal 工具（桌面专属）
+
+自 monorepo 桌面端 `Acme.Desktop.Shared/Shell/Terminal*` + `Acme.Desktop.Mvvm/TerminalViewModel` port（RoyalTerminal 控件 /
+OSC 8331 哨兵捕获 / Unix resize 防抖——踩坑件原样）。**切法（同浏览器）**：工具面（UI-free 的接口 + `run_in_terminal`）在 ⑭
+`Aether.Terminal.AI`；**UI 耦合的 impl**（`ITerminalService` 持 RoyalTerminal 控件/PTY）在本仓桌面 head `Terminal/`，
+经 `AddTerminalPanel` 一并接线——工具与面板共用同一 service 单例。
+
+**形态**：nav rail 第四个 tab「终端」——多标签集成终端，每会话一个 RoyalTerminal 控件 + **真实登录 shell**（zsh -l，
+完整 env 含 .zshrc；Windows powershell）。⑩ 工作台「加载即建全部 panel 视图、切 tab 只切 IsVisible（不销毁）」⇒
+**PTY 跨 tab 切换不断**；关掉最后一个会话自动补新会话（面板恒有活终端）。
+
+**agent 工作流**：`run_in_terminal`（Dangerous + DesktopOnly）把命令打进**当前活跃会话**（无则自动建一个）——
+命令在终端可见、可手动 Ctrl-C；**OSC 8331 哨兵**回显退出码（服务层扫原始字节，2MB 捕获封顶），返回输出经
+ANSI 剥离 + 头尾截断（6000 字符，失败 tail 优先）；超时/取消后**进程继续在终端跑**（可观察可介入）。
+与 `ExecuteShellCommand` 分工：后者静默管道拿干净 stdout/stderr 供判断；本工具走可见终端（需 TTY / 长任务 /
+完整登录环境）。app 退出经容器 DisposeAsync 杀全部 PTY（ShutdownRequested 钩子——防 shell 孤儿）。
+
+**与 monorepo 版的差异**：① 去底部面板显隐三成员（⑮ 是 nav tab 形态，无折叠 toggle）；② 去
+`ICurrentProjectDirectoryProvider`（⑮ 无文档页项目目录概念——默认 cwd = shell 家目录）；③ 服务经视图工厂闭包注入
+（非 DesktopApp.Services 定位器）；④ AnsiStrip 正则的字面 ESC/BEL 改显式 `\x1B`/`\x07` 转义（防不可见字符 port 丢失）。
+
+**验收**：⑭ `tests/Aether.Terminal.AI.Tests` 7 例（fake service：会话取用/新建、不等待模式、cd 前缀、结果映射、
+超时口径、长输出截断）+ 本仓 `TerminalToolWiringTests` 3 例（桌面注册 Dangerous/DesktopOnly / 手机连注册都不发生 /
+AddTerminalPanel 工具与服务同单例）；`--tools` 桌面 28 个含「终端（1）」；`--dump-layout` 三档尺寸 × 5 tab 全渲染
+（TerminalControl vis=True）且退出**无 zsh 残留**（PTY 清理链实证）。
+
 ### 移动端（方案A 实证，2026-10-24）
 
 同一份 ChatView/ChatViewModel/Core 直跑 iOS 与 Android（`src/Aether.AI.App.{iOS,Android}` head）：
@@ -437,10 +470,24 @@ dotnet test tests/Aether.AI.App.Tests              # 47 例（含工具接线 / 
 dotnet run --project src/Aether.AI.App.Desktop     # GUI
 dotnet run --project src/Aether.AI.App.Desktop -- --smoke       # 规则全链路 + 审批自恢复（exit 0 = L2 无 GUI 等价）
 dotnet run --project src/Aether.AI.App.Desktop -- --llm-smoke    # LLM 真模型冒烟（需已配置档案；无档案 SKIP）
-dotnet run --project src/Aether.AI.App.Desktop -- --browser-smoke # 浏览器真链路五断言（常规+附加两种模式真启动、操作 E2E、干净关闭；屏幕会闪浏览器窗口）
-dotnet run --project src/Aether.AI.App.Desktop -- --dump-layout  # 版式诊断：三档窗口尺寸 × 各 tab 的视觉树几何 → %TEMP%/aether-layout-*.txt
+dotnet run --project src/Aether.AI.App.Desktop -- --browser-smoke # 浏览器真链路五断言（常规+附加两种模式真启动、操作 E2E、干净关闭；屏幕会闪浏览器窗口）dotnet run --project src/Aether.AI.App.Desktop -- --dump-layout  # 版式诊断：三档窗口尺寸 × 各 tab 的视觉树几何 → %TEMP%/aether-layout-*.txt
 dotnet run --project src/Aether.AI.App.Desktop -- --tools        # 工具巡检：当前宿主可用工具（分类/审批等级）+ 被过滤项
 # 实测（2026-10-24，DeepSeek）：deepseek-chat 流式 token 段>0 ✅；deepseek-reasoner reasoning 段>0（💭 思考卡路径）✅
 dotnet build aether-ai-app.slnx                    # 全仓 7 个项目（src 的 android/ios head 需本机 workload）
 # spike/（M0 原型、与 src 一一对应的「双份 head」）已移出 slnx，需要时显式指定 csproj 构建
 ```
+
+## 发布（macOS 桌面端）
+
+```bash
+./scripts/publish-desktop.sh
+```
+
+- **产出**：`publish/AetherAI.app`（Release **自包含** + .app bundle，~270MB——含 .NET 运行时与 Playwright 驱动，不依赖本机 dotnet）。
+  Finder 双击运行 / 拷进 `/Applications` / 拖进 Dock；`publish/` 已进 .gitignore。
+- **数据目录共用**：`~/.aether/aether-ai-app`（llm-configs / agents / 会话库 / browser-profile）与调试态**同一份**——
+  发布版和 `dotnet run` 版可互换使用，登录态与历史无缝衔接。
+- **前置**：本机脚本（非 CI 产物）——依赖「兄弟仓并排于 AetherAxis 根下」的本地布局（跨仓 ProjectReference）；
+  自动按 `uname -m` 选 `osx-arm64`/`osx-x64`。未装 Xcode CLT 时 codesign 跳过（x86 无碍；arm64 上是硬要求，缺了需补装后重跑）。
+- **发布版验证**（2026-10-29 实测全过）：`"publish/AetherAI.app/Contents/MacOS/Aether.AI.App.Desktop" --tools`（27 工具）
+  与 `--browser-smoke`（五断言：常规+附加两模式、操作三件套 E2E、干净关闭——证明 Playwright 驱动完整随发布）。

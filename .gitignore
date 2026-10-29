@@ -13,6 +13,9 @@ TestResults/
 *.cobertura.xml
 coverage.*.xml
 
+# 发布产物（scripts/publish-desktop.sh 输出：AetherAI.app + payload）
+publish/
+
 # spike 本地数据
 *.db
 *.db-shm

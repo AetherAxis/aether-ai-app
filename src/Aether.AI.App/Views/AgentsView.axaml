@@ -162,16 +162,38 @@
               <StackPanel Spacing="6">
                 <TextBlock Text="允许的工具" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                 <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="10" Padding="12,8">
-                  <ItemsControl ItemsSource="{Binding ToolOptions}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal" ItemSpacing="16" LineSpacing="4"/>
-                      </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
+                  <!-- 按类别分组（可展开/收起）：组头 = 折叠箭头 + 三态勾选（勾=全选/取消=全不选/部分=不定态）；
+                       默认收起——组头勾选态不展开也可见可操作；子项仅展开后显示 -->
+                  <ItemsControl ItemsSource="{Binding ToolGroups}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate>
-                        <CheckBox IsChecked="{Binding IsSelected}" FontSize="12" Content="{Binding Name}"
-                                  ToolTip.Tip="{Binding Description}"/>
+                        <StackPanel Margin="0,3">
+                          <Grid ColumnDefinitions="Auto,*" Background="Transparent">
+                            <ToggleButton Grid.Column="0" Width="20" Height="20" Padding="0" Focusable="False"
+                                          Background="Transparent" BorderThickness="0"
+                                          IsChecked="{Binding IsExpanded}" ToolTip.Tip="展开/收起">
+                              <Panel>
+                                <TextBlock Text="▸" FontSize="11" IsVisible="{Binding !IsExpanded}"/>
+                                <TextBlock Text="▾" FontSize="11" IsVisible="{Binding IsExpanded}"/>
+                              </Panel>
+                            </ToggleButton>
+                            <CheckBox Grid.Column="1" IsChecked="{Binding IsChecked}" IsThreeState="True"
+                                      FontSize="12" FontWeight="SemiBold" Content="{Binding Header}"/>
+                          </Grid>
+                          <ItemsControl ItemsSource="{Binding Tools}" Margin="16,2,0,2" IsVisible="{Binding IsExpanded}">
+                            <ItemsControl.ItemsPanel>
+                              <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" ItemSpacing="16" LineSpacing="4"/>
+                              </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsSelected}" FontSize="12" Content="{Binding Name}"
+                                          ToolTip.Tip="{Binding Description}"/>
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </StackPanel>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>

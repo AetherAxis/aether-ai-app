@@ -18,8 +18,10 @@
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
-    <!-- Browser/ 面板 VM 的 [ObservableProperty]/[RelayCommand] 源生成器 -->
+    <!-- Browser//Terminal/ 面板 VM 的 [ObservableProperty]/[RelayCommand] 源生成器 -->
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <!-- 集成终端控件（SkiaSharp 渲染 + 自带 PTY）：只在桌面 head——移动闭包不背。 -->
+    <PackageReference Include="RoyalApps.RoyalTerminal.Avalonia" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,10 +29,13 @@
     <!-- 代码大脑的 Roslyn 编译器：**只在桌面 head 引用**（App 层只依赖纯抽象管线），
          移动 head 不背 Roslyn/FCS——代码 agent 在移动端会明确报「未注册 C# 编译器」。 -->
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Brains.Code.Compilation.CSharp\Aether.AI.Brains.Code.Compilation.CSharp.csproj" />
-    <!-- ⑭ 浏览器工具模块（Playwright headed 会话 + 4 个 agent 工具）：**只在桌面 head 引用**——
+    <!-- ⑭ 浏览器工具模块（Playwright headed 会话 + agent 工具）：**只在桌面 head 引用**——
          移动 head 不背 Playwright（iOS 沙盒禁子进程 + AOT 闭包卫生），浏览器工具在移动端连注册都不发生。
          面板 UI 在本 head 的 Browser/ 目录（AddBrowserPanel 一并注册）。 -->
     <ProjectReference Include="..\..\..\aether-ai-integrations\src\Aether.Browser.AI\Aether.Browser.AI.csproj" />
+    <!-- ⑭ 终端工具模块（run_in_terminal——接口 + 工具，UI-free）：**只在桌面 head 引用**；
+         ITerminalService 的 impl（持 RoyalTerminal 控件/PTY）在本 head 的 Terminal/（AddTerminalPanel 一并注册）。 -->
+    <ProjectReference Include="..\..\..\aether-ai-integrations\src\Aether.Terminal.AI\Aether.Terminal.AI.csproj" />
   </ItemGroup>
 
 </Project>
