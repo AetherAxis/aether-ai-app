@@ -99,6 +99,8 @@ public partial class App : Application
             _ = shell.InitializeAsync();          // 恢复布局 + 激活工作台（不阻塞首帧）
             _ = provider.GetRequiredService<ChatViewModel>().InitializeAsync();
             if (desktop.Args?.Contains("--dump-layout") == true) DumpLayoutAsync(window, desktop, shell);
+            if (desktop.Args?.Contains("--tab-switch-test") == true) TabSwitchTestAsync(provider, shell, desktop);
+            if (desktop.Args?.Contains("--view-recycle-test") == true) HeadGuiHook?.Invoke(provider, desktop);
         }
         else if (ApplicationLifetime is IActivityApplicationLifetime activity)
         {
@@ -184,6 +186,104 @@ public partial class App : Application
             System.Diagnostics.Trace.WriteLine($"[demo] {ex}");
         }
     }
+
+    /// <summary>
+    /// --tab-switch-test（2026-10-29）：「聊天轮次进行中切 nav tab 会中断吗」的 GUI E2E 复现口径。
+    /// 造一个临时规则 agent（ExecuteCommand sleep 5——Safe 链路、无审批弹框、时长确定）→ 发送「跑」→
+    /// 1s 后（轮次进行中）切「终端」（首挂顺带起真 PTY，制造并发压力）→「设置」→ 回「聊天」→
+    /// 等轮次收敛 → 断言终答存在。结束删临时 agent 并退出：exit 0 = tab 切换不杀轮次。
+    /// </summary>
+    private static async void TabSwitchTestAsync(IServiceProvider provider,
+        WorkbenchShellViewModel shell, Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var ok = false;
+        var detail = "";
+        try
+        {
+            // 等工作台激活（启动期 InitializeAsync 是火忘的）
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+            while (shell.ActiveWorkspace is null && DateTimeOffset.UtcNow < deadline)
+                await Task.Delay(100);
+            if (shell.ActiveWorkspace is null) throw new InvalidOperationException("工作台 10s 内未激活");
+
+            var store = provider.GetRequiredService<CustomAgentStore>();
+            var test = new CustomAgent
+            {
+                Id = "zz-tab-test",
+                Name = "tab-test",
+                Kind = CustomAgentKind.Rule,
+                MatchRegex = "^跑$",
+                Tools = new[] { "ExecuteCommand" },
+                ToolName = "ExecuteCommand",
+                ToolArgsTemplate = "{\"command\":\"sleep\",\"arguments\":\"5\"}",
+                ReplyTemplate = "done:{result}",
+                RequireToolApproval = false,
+                EnableModePicker = false,
+            };
+            store.Save(store.Agents.Where(a => a.Id != test.Id).Append(test).ToList());
+
+            var vm = provider.GetRequiredService<ChatViewModel>();
+            // 等目录热刷新把测试 agent 送进下拉（InitializeAsync 也在这一窗口内完成）
+            AgentTargetItem? item = null;
+            var findEnd = DateTimeOffset.UtcNow.AddSeconds(8);
+            while (item is null && DateTimeOffset.UtcNow < findEnd)
+            {
+                await Task.Delay(200);
+                item = vm.AgentTargetItems.FirstOrDefault(t => t.Id == "zz-tab-test");
+            }
+            if (item is null) throw new InvalidOperationException("测试 agent 8s 内未进下拉");
+
+            vm.SelectedAgentTarget = item;
+            vm.InputText = "跑";
+            _ = vm.SendInputCommand.ExecuteAsync(null);   // 火忘：轮次在后台跑，切 tab 与之并发
+            await Task.Delay(1000);                       // 轮次进行中（sleep 5）
+
+            var ws = shell.ActiveWorkspace!;
+            ws.SelectedTabIndex = 3;   // 终端（首挂会起真 PTY——顺带并发压力）
+            await Task.Delay(1500);
+            ws.SelectedTabIndex = 4;   // 设置
+            await Task.Delay(1000);
+            ws.SelectedTabIndex = 0;   // 回聊天
+
+            // 等轮次收敛（sleep 5 + 切换 3.5s，30s 上限兜底）
+            var waitEnd = DateTimeOffset.UtcNow.AddSeconds(30);
+            ChatTurnItem? turn = null;
+            while (DateTimeOffset.UtcNow < waitEnd)
+            {
+                turn = vm.Messages.LastOrDefault();
+                if (turn is { IsDone: true }) break;
+                await Task.Delay(200);
+            }
+            var answer = turn?.Children?.FirstOrDefault(c => c.IsAgentMarkdownText);
+            ok = turn is { IsDone: true } && answer is not null && (answer.Content?.Contains("done:") ?? false);
+            detail = $"IsDone={turn?.IsDone} answer={(answer?.Content is { Length: > 0 } c ? c[..Math.Min(40, c.Length)] : "-")}";
+        }
+        catch (Exception ex)
+        {
+            detail = ex.Message;
+        }
+        finally
+        {
+            try
+            {
+                var store = provider.GetRequiredService<CustomAgentStore>();
+                store.Save(store.Agents.Where(a => a.Id != "zz-tab-test").ToList());
+            }
+            catch { /* 清理尽力而为 */ }
+            Console.WriteLine(ok
+                ? $"[tab-test] PASS ✅ 聊天轮次在 tab 切换（终端/设置/返回）后仍完成（{detail}）"
+                : $"[tab-test] FAIL ❌ 轮次被中断或未收敛（{detail}）");
+            Environment.ExitCode = ok ? 0 : 1;
+            await Task.Delay(300);
+            desktop.Shutdown();
+        }
+    }
+
+    /// <summary>
+    /// head 专属 GUI 测试钩子（(provider, desktopLifetime) => …）：桌面 head 用它挂需要 head 内类型的
+    /// 端到端实证（如 --view-recycle-test——需要 TerminalView 具体类型，共享层够不着 Desktop head 的命名空间）。
+    /// </summary>
+    public static Action<IServiceProvider, Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime>? HeadGuiHook { get; set; }
 
     /// <summary>版式诊断（--dump-layout）：启动后按 1280x820 / 900x600 / 1792x997 三档窗口尺寸，
     /// 逐 tab 把整棵视觉树的几何（窗口坐标 / 可见性 / 裁切）写进 %TEMP%/aether-layout-*.txt 后退出。

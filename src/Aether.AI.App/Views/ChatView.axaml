@@ -157,13 +157,14 @@
           <Border Classes="chat-input-card">
             <Grid RowDefinitions="Auto,*">
               <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="10,10,10,8" HorizontalAlignment="Stretch">
-                <!-- 助手选择器：与「运行模式」「模型」并排——会话的两个身份开关（跟谁聊 / 用哪个模型）集中在输入栏，
-                     头部只留当前助手名（不再在左上角给一个下拉）。末项「管理 agent…」进管理窗。 -->
-                <Border Classes="picker" Margin="0,0,8,0">
+                <!-- 助手选择器：与「运行模式」「模型」并排——会话的两个身份开关（跟谁聊 / 用哪个模型）集中在输入栏。
+                     下拉纯选择；管理入口 = 旁边 ⚙ 按钮（2026-10-29 撤「管理 agent…」哨兵——
+                     「选哨兵再弹回」在 ComboBox 选中提交链里改选中状态，控件层卡旧值，且观感拙劣）。 -->
+                <Border Classes="picker" Margin="0,0,4,0">
                   <ComboBox x:Name="AgentPicker" Classes="compact" ItemsSource="{Binding AgentTargetItems}"
                             SelectedItem="{Binding SelectedAgentTarget}"
                             Padding="8,4" FontSize="11" MinWidth="96" PlaceholderText="选择助手"
-                            ToolTip.Tip="选择助手（末项「管理 agent…」打开管理窗）">
+                            ToolTip.Tip="选择聊天助手">
                     <ComboBox.SelectionBoxItemTemplate>
                       <DataTemplate>
                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -175,23 +176,24 @@
                     </ComboBox.SelectionBoxItemTemplate>
                     <ComboBox.ItemTemplate>
                       <DataTemplate>
-                        <!-- 末项「管理 agent…」带一条分隔线（与模型下拉的「管理模型…」同一套交互） -->
-                        <StackPanel Spacing="2">
-                          <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,4,0,4"
-                                  IsVisible="{Binding IsManage}"/>
-                          <StackPanel Orientation="Horizontal" Spacing="6">
-                            <TextBlock Text="{Binding DisplayIcon}" FontSize="13" VerticalAlignment="Center"/>
-                            <StackPanel Spacing="2">
-                              <TextBlock Text="{Binding Name}" FontSize="13"/>
-                              <TextBlock Text="{Binding Description}" FontSize="10"
-                                         Foreground="{DynamicResource TextSecondaryBrush}"
-                                         TextTrimming="CharacterEllipsis"/>
-                            </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <TextBlock Text="{Binding DisplayIcon}" FontSize="13" VerticalAlignment="Center"/>
+                          <StackPanel Spacing="2">
+                            <TextBlock Text="{Binding Name}" FontSize="13"/>
+                            <TextBlock Text="{Binding Description}" FontSize="10"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"/>
                           </StackPanel>
                         </StackPanel>
                       </DataTemplate>
                     </ComboBox.ItemTemplate>
                   </ComboBox>
+                </Border>
+                <!-- 管理 agent（新建/编辑/删除）：独立 ⚙ 按钮，桌面模态窗 / 移动内嵌浮层 -->
+                <Border Classes="picker" Margin="0,0,8,0" ToolTip.Tip="管理 agent…（新建 / 编辑 / 删除）">
+                  <Button Click="OnManageAgents" Background="Transparent" BorderThickness="0"
+                          Padding="6,4" FontSize="12" Content="⚙"
+                          Foreground="{DynamicResource TextPrimaryBrush}"/>
                 </Border>
                 <!-- 运行模式选择器（4 档）：运行中切档逐工具即时生效 -->
                 <Border Classes="picker" IsVisible="{Binding HasModeSupport}">

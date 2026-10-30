@@ -1,30 +1,35 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Aether.Terminal.AI;
+using Avalonia.Threading;
+using RoyalTerminal.Avalonia.Controls;
 
 namespace Aether.AI.App.Terminal;
 
 /// <summary>
-/// <see cref="ITerminalService"/> 实现：持会话元数据 + 哨兵捕获逻辑；控件/PTY 生命周期委托给已附着的 <see cref="TerminalView"/>。
-/// 单例——一个终端面板。app 退出经容器 DisposeAsync 杀所有 PTY（防 shell 孤儿——ShutdownRequested 钩子接线）。
-/// （自 monorepo Acme.Desktop.Shared.Shell.TerminalService port，2026-10-29；差异：去掉了底部面板显隐
-/// 持久化三成员——⑮ 是 nav tab 形态，没有折叠 toggle。）
+/// <see cref="ITerminalService"/> 实现：**控件/PTY 归服务所有**（BrowserService 同款形态，2026-10-29 重构）——
+/// TerminalControl 字典在服务里，视图是纯投影（附着 = 控件挂进 ContentHost；分离 = 摘下来），**视图可随意销毁**，
+/// PTY/会话不受影响；重建视图即原样续看。附带收益：agent 的 run_in_terminal 在用户从未打开终端 tab 时也能跑
+/// （旧实现控件归视图，无视图 = 无控件 = 工具报「尚未启动 shell」）。
 /// </summary>
 /// <remarks>
-/// 控件由 <see cref="TerminalView"/> 拥有（每会话一个 RoyalTerminal TerminalControl + 真实 PTY）。本服务经
-/// AttachView/DetachView 拿视图引用，转发 Create/Close/SendInput/RunAsync。RunAsync 的哨兵扫描在本服务内
-/// （统一一处）：向控件 SendInput 命令 + OSC 8331 退出码哨兵，订阅 TerminalControl.DataReceived 扫原始字节
-/// 命中哨兵拿退出码。⑩ 工作台加载即建全部 panel 视图（IsVisible 切换不销毁）→ 视图常驻，PTY 跨 nav 不断。
+/// 线程模型：工具可能从 agent 线程调 CreateSession/SendInput/RunAsync——一切触碰控件的路径经 <see cref="OnUi"/>
+///（UI 线程内联执行；否则阻塞等 UI 处理。UI 线程此时在 await 轮次，不会死锁）。RunAsync 的哨兵扫描沿事件线程
+/// 跑（capture 列表自锁）。app 退出经容器 DisposeAsync 直接 StopPty（进程句柄线程无关，不走视觉树操作）。
+/// 控件未附着视图时持名义尺寸（560×320）供 StartPty 取初始行列；附着时清掉让布局接管，resize 防抖自动校正。
 /// </remarks>
 public sealed class TerminalService : ITerminalService, IAsyncDisposable
 {
     private readonly Dictionary<Guid, SessionInfo> _sessions = new();
+    private readonly Dictionary<Guid, TerminalControl> _controls = new();
     private readonly object _lock = new();
     private TerminalView? _view;
     private Guid? _activeId;
@@ -32,46 +37,60 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
     /// <summary>RunAsync 捕获缓冲上限（2MB）：防无限输出命令在等哨兵期间内存无界；超限时丢已扫描头部保留最近 1MB。</summary>
     private const int MaxCaptureBytes = 2 * 1024 * 1024;
 
+    /// <summary>未附着视图时控件的名义尺寸（StartPty 的初始行列来源）；挂进视图时清掉由布局接管。</summary>
+    private const double DetachedNominalWidth = 560, DetachedNominalHeight = 320;
+
     public Guid? ActiveSessionId { get { lock (_lock) return _activeId; } }
 
     public event Action? SessionsChanged;
     public event Action<Guid>? ActiveSessionChanged;
     public event Action<Guid>? SessionExited;
 
-    // —— 视图附着（TerminalView.OnLoaded 调）——
-    public void AttachView(TerminalView view)
-    {
-        _view = view;
-        // 视图附着前可能已建会话（agent 工具先于用户打开终端 tab），补建控件 + 激活。
-        List<SessionInfo> snapshot;
-        Guid? active;
-        lock (_lock) { snapshot = _sessions.Values.ToList(); active = _activeId; }
-        foreach (var s in snapshot)
-            view.CreateSessionControl(s);
-        if (active is { } aid)
-            view.Activate(aid);
-    }
+    // —— 视图生命周期（纯投影：挂/摘控件，不动 PTY） ——
 
-    public void DetachView(TerminalView view)
+    /// <summary>视图附着（OnLoaded）：把控件挂进 ContentHost + 主题重染。幂等。</summary>
+    internal void OnViewAttached(TerminalView view)
     {
-        if (ReferenceEquals(_view, view))
+        lock (_lock) _view = view;
+        OnUi(() =>
         {
-            view.DisposeAllControls();
-            _view = null;
-        }
+            List<TerminalControl> snapshot;
+            lock (_lock) snapshot = _controls.Values.ToList();
+            foreach (var ctrl in snapshot)
+            {
+                // 清名义尺寸让布局接管（拉伸填充）；防抖 resize 会把 PTY 行列校正到实际值
+                ctrl.Width = double.NaN;
+                ctrl.Height = double.NaN;
+                if (ctrl.Parent is null) view.Host.Children.Add(ctrl);
+            }
+            view.ApplyThemeToAll();
+        });
     }
 
-    /// <summary>app 退出时容器 DisposeAsync 调此：杀所有仍在跑的 PTY 子进程，防退出后 shell 孤儿。
-    /// PTY 控件归视图所有，正常退出经视觉树分离（DetachView→DisposeAllControls）已清；此处兜底 dispose
-    /// 先于树分离或视图仍附着的情形——经视图 StopAllPtys() 只动进程句柄（线程无关），不触视觉树 Remove
-    /// （须 UI 线程），故 dispose 跑非 UI 线程也安全。</summary>
+    /// <summary>视图分离（OnDetachedFromVisualTree / 窗口关闭）：**只从视觉树摘下控件**——
+    /// 控件/PTY 归服务所有，视图销毁不杀会话（这是「视图可随意销毁」的关键路径）。</summary>
+    internal void OnViewDetached(TerminalView view)
+    {
+        lock (_lock) { if (!ReferenceEquals(_view, view)) return; _view = null; }
+        OnUi(() =>
+        {
+            foreach (var ctrl in view.Host.Children.OfType<TerminalControl>().ToList())
+                view.Host.Children.Remove(ctrl);
+        });
+    }
+
+    /// <summary>app 退出时容器 DisposeAsync 调此：直接杀所有 PTY 子进程（进程句柄线程无关，不做视觉树操作——
+    /// 退出路径 dispatcher 可能已停，不能依赖 OnUi）。防退出后 shell 孤儿。</summary>
     public ValueTask DisposeAsync()
     {
-        TerminalView? view;
-        lock (_lock) { view = _view; }
-        try { view?.StopAllPtys(); }
-        catch (Exception ex) { Trace.WriteLine($"terminal dispose stop-pty failed: {ex}"); }
-        lock (_lock) { _sessions.Clear(); _activeId = null; }
+        List<TerminalControl> snapshot;
+        lock (_lock) snapshot = _controls.Values.ToList();
+        foreach (var ctrl in snapshot)
+        {
+            try { ctrl.StopPty(); } catch { }
+            try { ctrl.RequestClose(); } catch { }
+        }
+        lock (_lock) { _sessions.Clear(); _controls.Clear(); _activeId = null; }
         _view = null;
         return ValueTask.CompletedTask;
     }
@@ -84,16 +103,68 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
             _sessions[info.Id] = info;
             _activeId = info.Id;
         }
-        _view?.CreateSessionControl(info);
-        _view?.Activate(info.Id);
+        OnUi(() => CreateSessionCore(info));
         SessionsChanged?.Invoke();
         ActiveSessionChanged?.Invoke(info.Id);
         return info;
     }
 
+    /// <summary>建控件 + 起 PTY（UI 线程内执行）。无视图时控件以 detached 形态存活（名义尺寸），附着时再挂树。</summary>
+    private void CreateSessionCore(SessionInfo info)
+    {
+        if (_controls.ContainsKey(info.Id)) return;
+        // 6 参 ctor 注入防抖 session service（Unix PTY resize 防抖——RoyalTerminal 仅 Windows 端自带；见 TerminalResizeDebounce）。
+        var ctrl = new TerminalControl(
+            TerminalResizeDebounce.Wrap(new RoyalTerminal.Terminal.Services.TerminalSessionService()),
+            new RoyalTerminal.Avalonia.Services.DefaultTerminalInputAdapter(),
+            new RoyalTerminal.Avalonia.Services.DefaultTerminalSelectionService(),
+            new RoyalTerminal.Avalonia.Services.DefaultTerminalScrollService(),
+            new RoyalTerminal.Terminal.DefaultVtProcessorFactory(),
+            new RoyalTerminal.Terminal.DefaultPtyFactory())
+        {
+            IsVisible = false,
+            TerminalFontSize = 13,
+            // 回滚缓冲封顶（默认无限）：长会话无限回滚把已滚动内容驻留内存，10000 行防无界增长。
+            ScrollbackLimit = 10_000,
+            // 名义尺寸：detached 时 StartPty 取初始行列用；挂树时 OnViewAttached 清掉由布局接管
+            Width = DetachedNominalWidth,
+            Height = DetachedNominalHeight,
+        };
+        ctrl.TitleChanged += (_, t) => NotifyTitleChanged(info.Id, t ?? info.Title);
+        ctrl.ProcessExited += (_, _) => NotifyExited(info.Id);
+        _controls[info.Id] = ctrl;
+
+        TerminalView? view;
+        lock (_lock) view = _view;
+        view?.Host.Children.Add(ctrl);
+
+        var (shell, args) = ResolveShell();
+        var wd = string.IsNullOrWhiteSpace(info.Cwd)
+            ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+            : info.Cwd;
+        try
+        {
+            ctrl.StartPty(shell, wd, args);
+        }
+        catch (Exception ex)
+        {
+            // 起壳失败不崩——向控件写一条错误（可见）+ 标记退出。
+            ctrl.WriteOutput(Encoding.UTF8.GetBytes($"终端启动失败: {ex.Message}\r\n"));
+            NotifyExited(info.Id);
+        }
+        ActivateCore(info.Id);
+    }
+
     public void CloseSession(Guid sessionId)
     {
-        _view?.RemoveControl(sessionId);
+        OnUi(() =>
+        {
+            if (_controls.Remove(sessionId, out var ctrl))
+            {
+                try { ctrl.StopPty(); } catch { }
+                try { ctrl.RequestClose(); } catch { }
+            }
+        });
         bool removed;
         Guid? newActive = null;
         lock (_lock)
@@ -101,17 +172,15 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
             removed = _sessions.Remove(sessionId);
             if (removed && _activeId == sessionId)
             {
-                // 没有剩余会话时显式置 null（LastOrDefault() 会给 Guid.Empty——ActiveSessionId 误判「还有会话」）。
                 _activeId = _sessions.Count > 0 ? _sessions.Keys.Last() : null;
                 newActive = _activeId;
             }
         }
         if (removed)
         {
-            if (newActive is { } aid) { _view?.Activate(aid); ActiveSessionChanged?.Invoke(aid); }
+            if (newActive is { } aid) { OnUi(() => ActivateCore(aid)); ActiveSessionChanged?.Invoke(aid); }
             SessionsChanged?.Invoke();
-            // 关掉最后一个会话 → 自动补一个全新会话：终端面板恒有活终端（无空态死区——
-            // 标签条 [+]/空态浮层均已按用户心智删除，无其它新建入口；cwd 走 shell 默认家目录）。
+            // 关掉最后一个会话 → 自动补一个全新会话：终端面板恒有活终端（无空态死区；cwd 走 shell 家目录）。
             lock (_lock) { if (_sessions.Count == 0) { CreateSession(null, null); return; } }
         }
     }
@@ -123,8 +192,14 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
             if (!_sessions.ContainsKey(sessionId)) return;
             _activeId = sessionId;
         }
-        _view?.Activate(sessionId);
+        OnUi(() => ActivateCore(sessionId));
         ActiveSessionChanged?.Invoke(sessionId);
+    }
+
+    private void ActivateCore(Guid id)
+    {
+        foreach (var (cid, ctrl) in _controls)
+            ctrl.IsVisible = cid == id;
     }
 
     public IReadOnlyList<ITerminalSession> GetSessions()
@@ -132,14 +207,15 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
         lock (_lock) return _sessions.Values.ToList();
     }
 
-    public void SendInput(Guid sessionId, string text) => _view?.SendInput(sessionId, text);
+    public void SendInput(Guid sessionId, string text)
+        => OnUi(() => { if (_controls.TryGetValue(sessionId, out var ctrl)) ctrl.SendInput(text); });
 
     public async Task<TerminalRunResult> RunAsync(Guid sessionId, string command, int timeoutMs, CancellationToken ct)
     {
-        var view = _view;
-        var ctrl = view?.GetControl(sessionId);
+        TerminalControl? ctrl;
+        lock (_lock) _controls.TryGetValue(sessionId, out ctrl);
         if (ctrl is null || !ctrl.HasPty)
-            return new TerminalRunResult { Error = "终端会话不存在或尚未启动 shell（打开「终端」tab 后重试）" };
+            return new TerminalRunResult { Error = "终端会话不存在或尚未启动 shell" };
 
         // 哨兵：OSC 8331 + 退出码。shell 收到的命令文本含 printf '\x1b]8331;%d\x07'（字面 backslash-x，
         // 非真实 ESC），printf 输出真实 ESC/BEL 字节——回显里无真实 0x1b，扫描不误命中。
@@ -152,7 +228,7 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
         var done = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
         int scanPos = 0;
 
-        void OnData(object? s, RoyalTerminal.Avalonia.Controls.TerminalDataEventArgs e)
+        void OnData(object? s, TerminalDataEventArgs e)
         {
             int exitCode;
             lock (captureLock)
@@ -163,9 +239,7 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
                     done.TrySetResult(exitCode);
                     return;
                 }
-                // capture 封顶（防 yes/无限日志类命令在等哨兵期间内存无界）：超 2MB 时丢弃
-                // 已扫描确认无哨兵的头部（scanPos 之前的字节不可能再命中），保留最近 1MB。
-                // 哨兵在命令末尾输出，丢头不影响检测；上层 OutputText 另有 6000 字符截断。
+                // capture 封顶（防 yes/无限日志类命令在等哨兵期间内存无界）：超 2MB 丢已扫描头部，保留最近 1MB。
                 if (capture.Count > MaxCaptureBytes)
                 {
                     var drop = Math.Min(scanPos, capture.Count - (MaxCaptureBytes / 2));
@@ -176,7 +250,6 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
                     }
                     else if (capture.Count > MaxCaptureBytes * 2)
                     {
-                        // scanPos 被卡在 0（病态流：开头是永不完结的部分哨兵）——硬丢到 1MB 保底。
                         capture.RemoveRange(0, capture.Count - (MaxCaptureBytes / 2));
                         scanPos = 0;
                     }
@@ -187,7 +260,7 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
         ctrl.DataReceived += OnData;
         try
         {
-            ctrl.SendInput(fullCmd + "\n");
+            OnUi(() => ctrl.SendInput(fullCmd + "\n"));
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(timeoutMs);
             try
@@ -216,24 +289,22 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
         {
             byte[] bytes;
             lock (captureLock) bytes = capture.ToArray();
-            // 截到哨兵前（哨兵字节之后无内容，但保守起见截到首个 ESC]8331;）
             var text = StripAnsi(Encoding.UTF8.GetString(bytes));
-            // 丢弃首行（shell 回显的命令行——单行命令的回显占一行；多行命令的回显可能多行，但首行截断已大幅降噪）。
+            // 丢弃首行（shell 回显的命令行——单行命令的回显占一行；多行回显可能多行，首行截断已大幅降噪）。
             var nl = text.IndexOf('\n');
             if (nl >= 0 && nl < text.Length) text = text[(nl + 1)..];
             return text.Trim();
         }
     }
 
-    // —— 视图回呼：控件运行时事件 → 更新元数据 + 通知 VM ——
+    // —— 控件事件回呼：更新元数据 + 通知 VM ——
     internal void NotifyTitleChanged(Guid id, string title)
     {
         lock (_lock)
         {
             if (_sessions.TryGetValue(id, out var s))
-                s = s with { Title = title };
+                _sessions[id] = s with { Title = title };
             else return;
-            _sessions[id] = s;
         }
         SessionsChanged?.Invoke();
     }
@@ -250,25 +321,46 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
         SessionExited?.Invoke(id);
     }
 
+    /// <summary>主题重染用：当前全部控件（视图 ApplyThemeToAll 消费）。</summary>
+    internal IEnumerable<TerminalControl> GetAllControls()
+    {
+        lock (_lock) return _controls.Values.ToList();
+    }
+
+    /// <summary>控件触碰统一入口：UI 线程内联；否则阻塞等 UI 处理（工具线程调 CreateSession/SendInput 用）。
+    /// UI 线程此刻在 await 轮次（异步），不会被占死——无死锁。</summary>
+    private static void OnUi(Action action)
+    {
+        if (Dispatcher.UIThread.CheckAccess()) action();
+        else Dispatcher.UIThread.InvokeAsync(action).GetAwaiter().GetResult();
+    }
+
     private static string DefaultTitle() => RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "powershell" : "shell";
+
+    /// <summary>shell 解析（交互式登录 shell：Unix zsh/bash -l；Windows powershell）。</summary>
+    private static (string shell, IReadOnlyList<string> args) ResolveShell()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return ("powershell.exe", new[] { "-NoLogo" });
+        var shell = Environment.GetEnvironmentVariable("SHELL");
+        if (string.IsNullOrEmpty(shell) || !File.Exists(shell))
+            shell = File.Exists("/bin/zsh") ? "/bin/zsh" : "/bin/bash";
+        return (shell, new[] { "-l" });
+    }
 
     /// <summary>在 capture 的 scanPos.. 之间扫描哨兵 ESC ] 8331 ; &lt;digits&gt; BEL。命中返回退出码并推进 scanPos 过哨兵。</summary>
     private static bool TryFindSentinel(List<byte> buf, ref int scanPos, out int exitCode)
     {
         exitCode = 0;
-        // 哨兵前缀：ESC(0x1B) ']' '8' '3' '3' '1' ';'
         for (int i = scanPos; i < buf.Count - 1; i++)
         {
             if (buf[i] != 0x1B || buf[i + 1] != (byte)']') continue;
-            // 匹配 ]8331;
             if (i + 6 >= buf.Count) break; // 不够长，等更多字节
             if (buf[i + 2] != (byte)'8' || buf[i + 3] != (byte)'3' || buf[i + 4] != (byte)'3' ||
                 buf[i + 5] != (byte)'1' || buf[i + 6] != (byte)';')
             {
-                // 别的 OSC（如标题），跳过这个 ESC——但仍可能其后跟 8331，保守只进 1
                 continue;
             }
-            // 读数字直到 BEL(0x07)
             int j = i + 7;
             var digits = new StringBuilder();
             while (j < buf.Count && buf[j] != 0x07 && buf[j] != 0x1B && j - (i + 7) < 12)
@@ -279,7 +371,6 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
             }
             if (j >= buf.Count || buf[j] != 0x07)
             {
-                // 哨兵未完整（BEL 未到）或异常中断；保留 scanPos 在 i 之前，等更多字节
                 scanPos = i;
                 return false;
             }
@@ -288,9 +379,7 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
                 scanPos = j + 1;
                 return true;
             }
-            // 数字解析失败，跳过
         }
-        // 保留尾部一小段（哨兵前缀最长 7 字节 + 数字 12 + BEL）防漏
         scanPos = Math.Max(0, buf.Count - 20);
         return false;
     }

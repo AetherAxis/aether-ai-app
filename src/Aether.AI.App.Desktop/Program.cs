@@ -33,6 +33,8 @@ internal static class Program
             aether.AddBrowserPanel(dataDir);
             aether.AddTerminalPanel();
         };
+        // head 专属 GUI 实证钩子：--view-recycle-test（视图销毁不杀 PTY 的端到端，需要 head 内具体类型）
+        App.HeadGuiHook = Terminal.ViewRecycleTest.Run;
 
         // 无头冒烟：与 GUI 完全同一条 DI 组合链（App.BuildProvider），跑规则大脑全链路 + 审批自恢复轮。
         // exit 0 = 通过——CI / 命令行验收用（L2 的无 GUI 等价物）。

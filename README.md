@@ -82,6 +82,8 @@
 | `--smoke`（规则全链路 + 审批自恢复） | ❌ | ✅ |
 | `--llm-smoke`（真模型一轮流式对话） | ❌ | ✅ |
 | `--browser-smoke`（Playwright 真启动 + cookie 提取 + 干净关闭三断言） | ❌ | ✅ |
+| `--tab-switch-test`（聊天轮次进行中切终端/设置/返回，断言轮次不被中断——2026-10-29 实测 PASS：app 内切 tab 不杀轮次） | ❌ | ✅ |
+| `--view-recycle-test`（终端视图销毁/重建的 PTY 存活四断言——2026-10-29 实测 PASS：视图生命周期与 PTY 彻底解耦） | ❌ | ✅ |
 | `--tools`（当前宿主可用工具清单） | ❌ | ✅ |
 | `--dump-layout`（版式几何转储）、Avalonia DeveloperTools | ❌ | ✅ |
 
@@ -194,16 +196,17 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
   保存/删除 → `store.Changed` → `ChatViewModel.RefreshAgentTargetsAsync()` 热刷新聊天下拉，
   重设选中项时经 `_rebuildingTargets` 抑制「用户切目标 → 开新会话」的副作用。
 - ⑫ 侧只加了一个**纯增量**字段 `AgentDefinition.Description`（给人看的摘要，与喂模型的 `Instructions` 分开）。
-- **入口与模型完全同构**：Agents 不再是 nav 页 —— 输入栏 agent 下拉末项「管理 agent…」→ 模态窗（桌面 880×860）/
-  内嵌浮层（移动），宿同一份 `AgentsView` + `AgentsViewModel`；选中哨兵时 VM 把值弹回原 agent 并抛 `ManageAgentsRequested`，
-  **不触发**「切目标开新会话」（`AgentTargetItem.IsManage` + `_lastAgentId` 回弹）。
+- **入口 = 输入卡 ⚙ 按钮（2026-10-29 撤哨兵）**：Agents 不再是 nav 页 —— agent 下拉**纯选择**，
+  旁边的 ⚙ 小按钮开管理窗（桌面模态 880×860 / 移动内嵌浮层，宿同一份 `AgentsView` + `AgentsViewModel`）。
+  撤哨兵原因：「下拉末项选『管理 agent…』→ VM 立刻把选中弹回原 agent」的模式要在 ComboBox 选中提交链里
+  改选中状态——控件层会卡在哨兵/旧值上与 VM 脱钩（两轮实测 bug），且观感拙劣；按钮化后整类回弹问题不存在。
   旧布局档案（含 agents tab）由 ⑩ 的 `CoversSameRegions` 判定结构变化后自动回退默认，无迁移负担。
 - **2026-10-29 工具勾选按类别分组（可展开/收起）**：「允许的工具」不再平铺——按 ToolRegistry 类别分组，组默认**收起**
   （▸/▾ 折叠箭头切换展开），组头「类别（N）」**三态勾选**：勾=全选组内 / 取消=全不选 / 部分选中显示不定态——
   不展开也能看状态、也能整组打勾；组内 `ToolOption` 与平铺集合同实例，保存/载入逻辑零改动（分组纯展示层）。
   单测 `ToolGroupingTests` 5 例。
 - 单测 `tests/…App.Tests/CustomAgentTests.cs`：JSON 往返、两类映射、正则/JSON 校验、
-  保存后进目录 + 聊天下拉 + **规则 agent 真跑一轮（ReadFile 真链路）**、删除后消失、管理哨兵不重置会话。
+  保存后进目录 + 聊天下拉 + **规则 agent 真跑一轮（ReadFile 真链路）**、删除后消失。
 
 **2026-10-27：取消「内置 agent」这一档**（用户反馈“压根不需要内置 agent，内置 agent 也是可以管理编辑删除的，
 只留一个通用助手就行，通用助手也能管理”）。目录从此**只有一个来源**：`<dataDir>/agents.json`。
@@ -215,7 +218,7 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 | 管理窗 | 顶部列表 + 底部「内置 agent（只读）」卡片 | 只剩「我的 agent」列表，每一行都有 编辑 / 删除 |
 
 - 播种只发生在 `agents.json` **不存在**时：用户删掉通用助手或删空整表，重启都不会复活（尊重用户）。
-- 全删光时聊天顶部下拉只剩「管理 agent…」，输入卡提示“还没有 agent——在顶部下拉的「管理 agent…」里新建一个”。
+- 全删光时下拉为空，输入卡提示“还没有 agent”（⚙ 按钮新建）。
 - `IAgentRunner.Invalidate` 改对目录里全部 agent 逐个失效（通用助手改过名、或用户自建的“跟随当前档案”agent 都要跟着换模型）。
 
 **2026-10-27 修订：模态窗要叠主题 token**（用户反馈“删除/新建只有鼠标移上去才看得见”）。⑩ 的主题
@@ -423,8 +426,9 @@ OSC 8331 哨兵捕获 / Unix resize 防抖——踩坑件原样）。**切法（
 经 `AddTerminalPanel` 一并接线——工具与面板共用同一 service 单例。
 
 **形态**：nav rail 第四个 tab「终端」——多标签集成终端，每会话一个 RoyalTerminal 控件 + **真实登录 shell**（zsh -l，
-完整 env 含 .zshrc；Windows powershell）。⑩ 工作台「加载即建全部 panel 视图、切 tab 只切 IsVisible（不销毁）」⇒
-**PTY 跨 tab 切换不断**；关掉最后一个会话自动补新会话（面板恒有活终端）。
+完整 env 含 .zshrc；Windows powershell）。**控件/PTY 归服务所有（2026-10-29 重构，BrowserService 同款）**——视图是
+纯投影（附着=挂载控件、分离=摘下），**视图可随意销毁**不杀会话、重建即原样续看；`run_in_terminal` 无需用户开过终端
+tab（无视图也能建会话跑命令）。关掉最后一个会话自动补新会话（面板恒有活终端）。
 
 **agent 工作流**：`run_in_terminal`（Dangerous + DesktopOnly）把命令打进**当前活跃会话**（无则自动建一个）——
 命令在终端可见、可手动 Ctrl-C；**OSC 8331 哨兵**回显退出码（服务层扫原始字节，2MB 捕获封顶），返回输出经
@@ -438,8 +442,10 @@ ANSI 剥离 + 头尾截断（6000 字符，失败 tail 优先）；超时/取消
 
 **验收**：⑭ `tests/Aether.Terminal.AI.Tests` 7 例（fake service：会话取用/新建、不等待模式、cd 前缀、结果映射、
 超时口径、长输出截断）+ 本仓 `TerminalToolWiringTests` 3 例（桌面注册 Dangerous/DesktopOnly / 手机连注册都不发生 /
-AddTerminalPanel 工具与服务同单例）；`--tools` 桌面 28 个含「终端（1）」；`--dump-layout` 三档尺寸 × 5 tab 全渲染
-（TerminalControl vis=True）且退出**无 zsh 残留**（PTY 清理链实证）。
+AddTerminalPanel 工具与服务同单例）；`--tools` 桌面 27 个含「终端（1）」；`--dump-layout` 三档尺寸 × 5 tab 全渲染
+（TerminalControl vis=True）且退出**无 zsh 残留**（PTY 清理链实证）；**`--view-recycle-test` 四断言全过**
+（无视图可跑 / 附着续用 / **销毁视图后 PTY 仍活** / 重建视图续看——视图生命周期与 PTY 彻底解耦的端到端实证，
+经 `App.HeadGuiHook` 注入——harness 需要 head 内具体类型）。
 
 ### 移动端（方案A 实证，2026-10-24）
 

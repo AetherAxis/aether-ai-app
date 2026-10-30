@@ -45,6 +45,9 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>LSMinimumSystemVersion</key><string>10.15</string>
     <key>NSHighResolutionCapable</key><true/>
+    <!-- 禁用 App Sleep（App Nap）：窗口被其它应用盖住时 macOS 会合并/延迟进程计时器——
+         聊天流式的 150ms 刷新节流被拖延，后台看起来像「中断」。聊天类桌面应用的标准对策。 -->
+    <key>NSAppSleepDisabled</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict>
 </plist>
