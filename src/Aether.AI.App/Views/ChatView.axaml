@@ -354,10 +354,6 @@
                     ToolTip.Tip="技能包 / 连接器 / 链上钱包">
               <TextBlock Text="能力" FontSize="13" VerticalAlignment="Center"/>
             </Button>
-            <Button x:Name="AuditTabButton" Click="OnAuditTab" Classes="ghost" Padding="10,6"
-                    ToolTip.Tip="应用审查（网页应用名 → 站点 → 博彩判定）">
-              <TextBlock Text="审查" FontSize="13" VerticalAlignment="Center"/>
-            </Button>
           </StackPanel>
           <Button Grid.Column="2" Click="OnSettingsClose" Classes="ghost" Padding="10,6" ToolTip.Tip="返回聊天">
             <Path Data="{x:Static wb:Codicons.ChromeClose}" Stretch="Uniform" Width="14" Height="14"
@@ -373,9 +369,6 @@
             <views:CapabilitiesView x:Name="MobileCapabilitiesView"/>
           </Border>
         </ScrollViewer>
-        <!-- 应用审查：与桌面 nav rail 那一页**同一个控件**（它自带滚动，这里不再套 ScrollViewer）。
-             审查记录落 <dataDir>/app-audit.json，所以手机上看到的就是桌面上跑出来的那批结论。 -->
-        <views:AppAuditView x:Name="MobileAuditView" IsVisible="False"/>
       </Panel>
     </DockPanel>
   </Border>

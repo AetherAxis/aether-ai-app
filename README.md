@@ -4,7 +4,7 @@
 一套 AXAML / ViewModel / Core，按平台调整主题、控件尺寸、手势与 safe-area。
 
 **当前状态（2026-10-29）**：M0 方案A 六项硬前提全过 → M1 桌面聊天 MVP → M2-lite 自定义大脑（LLM/规则/代码）
-→ M2-tools ⑭ 工具接入 → M2-caps 技能包 + 连接器 → M2-memory 记忆开关 → M2-wallet 链上钱包（**2026-10-28 随 AI 线去业务化移除**，见该节）→ M2-appaudit 应用审查页
+→ M2-tools ⑭ 工具接入 → M2-caps 技能包 + 连接器 → M2-memory 记忆开关 → M2-wallet 链上钱包（**2026-10-28 随 AI 线去业务化移除**，见该节）→ M2-appaudit 应用审查（**已整体退休**：页面 10-29 撤、⑭ 模块 10-30 移除——判定用 WebSearch/FetchUrl 即可）
 → M2-browser 浏览器面板（⑭ `Aether.Browser.AI` 工具 + 桌面 head `Browser/` 面板，见该节）
 → M2-terminal 集成终端（⑭ `Aether.Terminal.AI` 的 run_in_terminal + 桌面 head `Terminal/` 面板，见该节）。正式结构在 `src/`
 （App.Core 无 UI 引擎 + App 共享 UI + `.Desktop`/`.Android`/`.iOS` 三个 head + `tests/`）；
@@ -15,7 +15,7 @@
 
 - ⑩ `aether-workbench`——桌面壳/主题引擎/布局（spike 仅验证移动 TFM 可引用 + 主题清单可加载）
 - ⑫ `aether-ai`——Hosting + Brains.Rule + Memory.Sqlite（**移动端闭包不带 Roslyn/FCS/LLM SDK 之外的重物**）
-- ⑭ `aether-ai-integrations`——系统工具 16 个（含 **WebSearch** 网搜；命令类仅桌面）+ 应用审查 3 个（`Aether.AppAudit.AI`，本仓只留页面）+ **浏览器 7 个（`Aether.Browser.AI`，2026-10-29：工具/Playwright 服务在 ⑭，面板 UI 在本仓桌面 head `Browser/`——桌面专属，移动 head 不引 ⇒ Playwright 不进移动闭包）** + **终端 1 个（`Aether.Terminal.AI` 的 `run_in_terminal`，2026-10-29：工具在 ⑭，面板 UI 在桌面 head `Terminal/`——RoyalTerminal 真实 PTY，桌面专属）**。~~链上钱包 4 个~~（2026-10-28 随 AI 线去业务化移除——AI 线本质可调任意工具，业务适配未来按需再加）
+- ⑭ `aether-ai-integrations`——系统工具 16 个（含 **WebSearch** 网搜；命令类仅桌面）+ **浏览器 7 个（`Aether.Browser.AI`，2026-10-29：工具/Playwright 服务在 ⑭，面板 UI 在本仓桌面 head `Browser/`——桌面专属，移动 head 不引 ⇒ Playwright 不进移动闭包）** + **终端 1 个（`Aether.Terminal.AI` 的 `run_in_terminal`，2026-10-29：工具在 ⑭，面板 UI 在桌面 head `Terminal/`——RoyalTerminal 真实 PTY，桌面专属）**。~~链上钱包 4 个~~（2026-10-28 随 AI 线去业务化移除——AI 线本质可调任意工具，业务适配未来按需再加）
 
 ## 平台能力对照：手机端 / 桌面端（2026-10-27 实测口径）
 
@@ -35,11 +35,10 @@
 | 功能 | 手机 | 桌面 | 为什么 / 手机上的表现 |
 |---|:--:|:--:|---|
 | 文件类：ReadFile / WriteFile / EditFile / LineEditFile / DeleteFile / MoveFile | ⚠️ | ✅ | 工具本身可用，但**只能碰 App 沙箱内路径**（iOS 容器外的绝对路径读不到也写不了） |
-| **WebSearch（网搜，返回候选站点）** | ✅ | ✅ | 纯 HTTP 抓搜索引擎结果页，两端同源；应用审查页的反查用的是**同一份实现**（`WebSearchClient`） |
+| **WebSearch（网搜，返回候选站点）** | ✅ | ✅ | 纯 HTTP 抓搜索引擎结果页，两端同源 |
 | 检索与批处理：Grep / Glob / ExploreDirectory / DiffFile / ApplyPatch / ApplyPatchWithDelete | ✅ | ✅ | 同上：纯托管 + 文件 IO，沙箱内正常 |
 | FetchUrl（抓网页/PDF） | ✅ | ✅ | 纯 HTTP |
 | **ExecuteCommand / ExecuteShellCommand（起子进程）** | ❌ | ✅ | iOS 沙盒禁止 fork。手机端**连注册都不发生**（`includeCommandTools:false`），编辑页的工具列表里也没有它们 |
-| **应用审查 3 个（ListAuditTasks / SaveAppVerdict / ReadAppVerdict）** | ✅ | ✅ | **取任务 + 写/读结论，不含判定逻辑**——页面只发布任务，agent 自己查证据判、把结论写回同一份记录。只用本地 JSON，Safe 级不触发审批 |
 | **浏览器 7 个（open / get_cookies / get_requests / close + **操作三件套** read / click / type）** | ❌ | ✅ | Playwright **headed 独立 OS 窗口**（用户手动登录），agent 读页面（`browser_read`）、点元素/填表单（`browser_click`/`browser_type`，Playwright selector）、取请求流 / cookie（拼 CookieHeader 给 curl 带访问需登录接口）。工具/服务在 ⑭ `Aether.Browser.AI`、面板 UI 在桌面 head `Browser/`；手机端**连注册都不发生**（桌面 head 的 `HeadToolsConfigure` 钩子，移动 head 不设）。`browser_get_cookies` / `browser_click` / `browser_type` = **Confirm**（动凭证、动已登录会话须过审批——审批卡可勾「总是允许」） |
 | **终端 1 个（run_in_terminal）** | ❌ | ✅ | 在**可见**集成终端执行命令——真实 PTY / 完整登录 env（含 .zshrc）/ 可观察可中断（超时后进程继续在终端跑，可手动 Ctrl-C）。与 `ExecuteShellCommand` 分工：后者静默管道拿干净输出。工具在 ⑭ `Aether.Terminal.AI`、面板在本仓桌面 head `Terminal/`；Dangerous + DesktopOnly |
 
@@ -69,7 +68,6 @@
 | agent 管理（增删改、三类大脑、记忆开关） | ✅ 内嵌浮层 | ✅ 880×860 模态窗 | 同一份 `AgentsView` |
 | 模型档案管理（CRUD + 测试连接 + 切换免重启） | ✅ 内嵌浮层 | ✅ 模态窗 | 同一份 `LlmProfilesView` |
 | **设置页**（外观主题 / 重置布局） | ❌ | ✅ | 设置页挂在 ⑩ 工作台的 nav rail 齿轮上；移动形态没有 nav rail（移动壳属 M3）。**但其「能力」内容手机可达**：`CapabilitiesView`（技能包 / 连接器）已挂到手机「模型设置」浮层的「能力」页签 |
-| **应用审查页**（发布任务 + 显示结论） | ✅ 「模型设置 → 审查」页签 | ✅ nav rail 独立 tab | 同一份 `AppAuditView`/VM；**页面不搜不判**，结论由 agent 通过工具写回同一份 `app-audit.json`，见 M2-appaudit |
 | **浏览器面板**（会话标签 + 请求流 + 详情） | ❌ | ✅ nav rail 独立 tab | 桌面 head `Browser/BrowserView`；浏览器画面是 Playwright 独立 OS 窗口，面板只观测请求流（agent 与用户开的会话同一个），见 M2-browser |
 | **终端面板**（多标签集成终端） | ❌ | ✅ nav rail 独立 tab | 桌面 head `Terminal/TerminalView`（RoyalTerminal 控件，真实 PTY——zsh 登录 shell）；⑩ 工作台「建全部 panel、切 tab 只切 IsVisible」⇒ PTY 跨 tab 切换不断；agent `run_in_terminal` 的命令打进当前活跃会话，见 M2-terminal |
 | 布局持久化、分隔条、多 tab | ❌ | ✅ | 桌面壳专属；移动是单视图全屏 |
@@ -254,7 +252,7 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 - UI 与服务端口径一致：agent 编辑页的工具勾选列表改用 `ToolRegistry.GetUsableMetas()`（新增，过滤口径与
   `ResolveAll` 逐条相同）——手机上不会出现「执行命令」，桌面上也不会有手机专属工具。
 
-**验收**：`--tools` 打印当前宿主可用工具清单（桌面 27 个 = 系统 16 + 应用审查 3 + **浏览器 7** + **终端 1**；手机 17 个 = 系统 14 + 应用审查 3；
+**验收**：`--tools` 打印当前宿主可用工具清单（桌面 24 个 = 系统 16 + **浏览器 7** + **终端 1**；手机 14 个 = 系统 14；
 2026-10-29 移除 Echo 演示工具 -1、终端 +1、浏览器 4→7，加入前为 20/18，2026-10-28 移除钱包 4 个前为 24/22）；
 `tests/…App.Tests/AppToolWiringTests.cs` 4 例覆盖：手机宿主不含命令工具（且未注册）、
 桌面专属工具「注册但不可勾选且 ResolveAll 跳过」、head 钩子语义、以及**真解析 ReadFile 真读文件**。
@@ -316,55 +314,14 @@ CI 亦不再 checkout ① aether-ledger。虚拟币线的钱包能力不受影�
 恢复 AI 侧钱包工具时按 ⑭「一个领域一个模块」惯例重建（源码在两仓 git 历史）。
 Ed25519 换库的回归（`LedgerEd25519ParityTests`）留在 ①，与 AI 线无关。
 
-### M2-appaudit（2026-10-27）：应用审查页（页面只发布任务，判定由 agent 做）
+### M2-appaudit（2026-10-27 落地；2026-10-29/30 整体退休）
 
-需求：用户手上有**一份应用名清单**（手机上以 Chrome 网页应用方式装的那些，只知道显示名），
-想知道①这些名字对应的是哪个网站、②这是什么类型的网站，顺带判定它是不是博彩站。
-**结构性决定**：这页只做两件事——**发布任务**和**显示结论**。判定怎么做得由 agent 自己决定
-（它用 `WebSearch` 搜、用 `FetchUrl` 抓正文、凭已有知识都行），页面一行判定逻辑都没有。
-
-**任务流**
-
-```
-应用审查页 ──导入名单──▶ 待发布 ──发布任务──▶ 任务池
-                                              │  ListAuditTasks（agent 读）
-                                              ▼
-                                        agent 自己判定（工具不限）
-                                              │  SaveAppVerdict（agent 写）
-                                              ▼
-应用审查页 ◀── store.Changed 刷新 ──── app-audit.json
-```
-
-| # | 环节 | 实现 | 位置 |
-|---|---|---|---|
-| 1 | 清单来源 | **只有名字输入**：粘贴框一行一条 →「导入清单」（容忍 `1.` `2)` `1、` `- ` `• ` 前缀、`名字 https://…` 两段；给的名字自带网址就等于自带一条站点证据）。**不做本机扫描**——名字是用户的输入 | ⑭ `AppAudit.AI/AppNameList` |
-| 2 | 发布任务 | 「发布任务」只改状态：`待发布 → 已发布`（不搜、不判、不发请求）。默认跳过已判过的；勾「含已判过的（复核）」把它们也放进池，**旧结论不清空、留在历史里**，行上标「待复核」 | ⑭ `AppAudit.AI/AppAuditService.Publish` |
-| 3 | 取任务 | `ListAuditTasks`：待处理名字 + 清单里给的网址 + 上次结论（含判过几次），按发布时间先来后到、`limit` 截断 | ⑭ `AppAudit.AI/Tools/AppAuditTool` |
-| 4 | 判定 | **没有判断逻辑**：agent 自己找证据、自己下结论。口径写在 skill 里：`skills/app-audit/SKILL.md`（何时用 WebSearch/FetchUrl、类型标签、博彩判定、`不确定 ≠ 干净`） | ⑭ `AppAudit.AI/AppAuditSkill`（skill 正文）+ ⑭ `SystemTools.AI` 的 `WebSearch`/`FetchUrl`（证据工具） |
-| 5 | 写回 | `SaveAppVerdict`：追加一条 `AppVerdictAttempt`（时间/结论/类型/置信度/谁判的/理由/候选数）+ 覆盖当前结论 + 出池。合法性在入口拦（非法 verdict 不落盘；同义词/中文也认） | ⑭ `AppAudit.AI/Tools/AppAuditTool` + `AppAuditService.RecordVerdict` |
-| 6 | 页面 | 汇总一行（任务池/待发布/博彩/非博彩/不确定）+「发布任务(N)」+ 粘贴框 + 导入/清空 + 逐行：名称 / 对应网站 / **类型** / 徽章 / 置信度 /「重发」+ 第二行「状态 · 理由」+ 任务流说明卡 | `Views/AppAuditView.axaml` + `ViewModels/AppAuditViewModel` |
-| 7 | 落盘 | `<dataDir>/app-audit.json`（两端同一份，原子写 tmp→rename）；**再导入只补空缺，已判结论绝不被洗掉** | ⑭ `AppAudit.AI/AppAuditStore` |
-
-- 为什么这么切：判定是**会变的东西**（口径、模型、要不要抓正文、要不要多轮），把它放进页面/服务里，
-  换个判法就得改代码重编译；切出去以后——调口径改 Markdown、换判定方换 agent、页面和存储一行不动。
-  刻意**不提供**「一条龙判定工具」（把“怎么判”钉死在工具里的老路）。
-- **判定不是一次定终身**：行上「重发」把单条放回任务池（或勾「含已判过的」批量发布复核任务），
-  再判一次就再写一条历史；行上显示「第 N 次判定」、悬停看历次结论。
-- 类型标签口径：体育博彩 / 真人赌场 / 棋牌 / 视频 / 直播 / 社交 / 电商 / 新闻资讯 / 工具 / 软件下载 / 网盘 /
-  游戏 / 色情 / 金融理财 / 诈骗站 / 未知；判不准时填「未知」，不许猜（页面类型列显示 `—` 即未判定）。
-- 纪律：**「不确定」是保留结论，不是「非博彩」**——搜不到/同名不同义/证据不足都落成可见的 Inconclusive。
-- 老文件兼容：旧版页面内流水线的阶段（`Searching`/`Searched`/`Judging`）**都算「待处理」**，
-  中途退出的记录不会变成没人管的孤儿；枚举名保留就是为了读得懂老 JSON。
-- skill 升级也守「不覆盖用户改动」：盘上内容若还是**旧版默认正文**（说明没改过）才升级成新版，
-  改过的一律不动。
-- **领域代码不在本仓**（2026-10-27）：模型 / 落盘 / 任务板 / 判定口径 skill / 三个工具全部搬到
-  ⑭ `aether-ai-integrations/src/Aether.AppAudit.AI`（`AddAppAuditTools(builder, dataDir, skillsDir)`），
-  沿用 ⑭ 的「一个领域一个模块」惯例。本仓只剩这页的 `AppAuditView` + `AppAuditViewModel`
-  与一行注册——所以任何宿主（别的 app/CLI/服务）引用 ⑭ 那个模块就能有自己的应用审查，不需要这个 UI 仓。
-  回归测试也随之搬到 ⑭ `tests/Aether.AppAudit.AI.Tests`（31 例：任务板状态机、写入纪律、工具链路、
-  skill 落盘/迁移）；本仓 58 例里只剩「页面动作」这一层。
-- 验收：桌面 `--tools` 有 `应用审查（3）`；`--dump-layout` 三档尺寸（1280/900/1792）该页无遮挡、无横向溢出。
-
+应用审查曾以「页面只发布任务、判定由 agent 做」的形态落地（页面 + ⑭ `Aether.AppAudit.AI` 模块：任务板 /
+3 工具 / 判定口径 skill / `app-audit.json` 落盘，详细设计见 git 历史本节旧文与 ⑭ README 范围决策记录）。
+**退休过程**：2026-10-29 页面撤除（nav tab + 移动页签，View/VM 删）；2026-10-30 ⑭ 模块整体移除（用户定调：
+判定的实际能力 = WebSearch/FetchUrl 查证据 + agent 自己下结论，SystemTools 本来就有——专用任务板不再需要）。
+**现状**：agent 聊天里直接说「审查这些应用名」即可；历史 `app-audit.json` 与已种进 skills 目录的
+`app-audit/SKILL.md` 留在数据目录（skill 仍会被 ⑫ 加载，不想要可手删）。
 ### M2-browser（2026-10-29）：浏览器面板 + agent 浏览器工具（桌面专属）
 
 自 monorepo 桌面端 `Acme.Desktop.Shared/Shell/Browser` port（BrowserService/BrowserTool/接口原样，面板 View/VM 随迁简化）。

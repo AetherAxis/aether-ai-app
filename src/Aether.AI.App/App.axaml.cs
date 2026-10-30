@@ -1,7 +1,6 @@
 using System.IO;
 using Aether.AI.Abstractions;
 using Aether.AI.App.Core;
-using Aether.AppAudit.AI;
 using Aether.AI.App.ViewModels;
 using Aether.AI.App.Views;
 using Aether.AI.Brains.Code.Compilation;
@@ -239,9 +238,9 @@ public partial class App : Application
             await Task.Delay(1000);                       // 轮次进行中（sleep 5）
 
             var ws = shell.ActiveWorkspace!;
-            ws.SelectedTabIndex = 3;   // 终端（首挂会起真 PTY——顺带并发压力）
+            ws.SelectedTabIndex = 2;   // 终端（首挂会起真 PTY——顺带并发压力）
             await Task.Delay(1500);
-            ws.SelectedTabIndex = 4;   // 设置
+            ws.SelectedTabIndex = 3;   // 设置
             await Task.Delay(1000);
             ws.SelectedTabIndex = 0;   // 回聊天
 
@@ -292,7 +291,7 @@ public partial class App : Application
         WorkbenchShellViewModel shell)
     {
         await Task.Delay(2500);
-        var tabs = new[] { "chat", "app-audit", "browser", "terminal", "settings" };   // 与 DesktopWorkspace.LayoutTabbed 的页签顺序一致
+        var tabs = new[] { "chat", "browser", "terminal", "settings" };   // 与 DesktopWorkspace.LayoutTabbed 的页签顺序一致
         foreach (var (w, h) in new[] { (1280.0, 820.0), (900.0, 600.0), (1792.0, 997.0) })
         {
             window.Width = w;
@@ -433,18 +432,13 @@ public partial class App : Application
             MobileApproval = new MobileApprovalService();
             services.AddSingleton<IApprovalDialogService>(MobileApproval);
         }
-        // —— 应用审查（**只发布任务**；判定由 agent 做，页面只显示结论）——
-        // 领域模块在 ⑭（Aether.AppAudit.AI）：数据模型 / 落盘 / 任务板 / 判定口径 skill / agent 工具
-        // 全在那边，本仓只留这页的 View + VM。AddAppAuditTools 顺手把 skill 种进 skills 目录
-        // （agent 会自动加载；改口径改 Markdown，不用重编译）。
-        services.AddSingleton<AppAuditViewModel>();
+        // —— 应用审查：**已整体退休（2026-10-30 用户定调）**——页面（10-29）与 ⑭ Aether.AppAudit.AI 模块
+        // （10-30：3 工具 + skill 播种）相继撤除。判定的实际能力（WebSearch/FetchUrl 查证据）SystemTools
+        // 本来就有，agent 聊天里直接用；历史 app-audit.json 与已种的 SKILL.md 留在数据目录不受影响。 ——
 
         services.AddSingleton<ChatViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AgentsViewModel>();   // agent 管理窗（聊天顶部下拉末项「管理 agent…」进入）
-
-        // ⑭ 应用审查集成模块：注册 store/service/工具（三个工具都不含判定逻辑）。
-        aether.AddAppAuditTools(dataDir, capabilities.SkillsDirectory);
 
         configure?.Invoke(services);
         ServicesConfigure?.Invoke(services);   // head 专属注入（桌面：AddCSharpBrainCompilation —— Roslyn）

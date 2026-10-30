@@ -16,11 +16,7 @@ public sealed class AppViewContributor : IViewRegistryContributor
 
         // 设置面板 = rail 底部齿轮直达的那一页（FooterPanelKey），只管外观（主题）+ 布局（重置）。
         // LLM 档案走聊天输入卡的「模型 ⚙」→ LlmProfilesView（同一份 SettingsViewModel）——一处配置，不重复出现。
-        // 应用审查页（Chrome 网页应用名 → 反查站点 → 博彩判定）。数据落 <dataDir>/app-audit.json，两端同一份。
-        registry.Register(PanelKeys.AppAudit,
-            () => new AppAuditView(),
-            () => services.GetRequiredService<AppAuditViewModel>());
-
+        // （应用审查页 2026-10-29 撤除——⑭ 的 3 个 AI 工具保留，agent 聊天里照用。）
         registry.Register(PanelKeys.Settings,
             () => new SettingsView(),
             () => services.GetRequiredService<SettingsViewModel>());

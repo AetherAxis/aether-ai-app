@@ -37,8 +37,7 @@
     <!-- ⑭ 系统工具（文件/搜索/HTTP/命令 15 个）——**两端共享**：纯托管 + IHttpClientFactory，
          无原生依赖，手机端照样能用（命令类在手机端按宿主能力跳过，见 BuildProvider）。 -->
     <ProjectReference Include="..\..\..\aether-ai-integrations\src\Aether.SystemTools.AI\Aether.SystemTools.AI.csproj" />
-    <!-- ⑭ 应用审查集成模块：数据模型/任务板/skill/工具都在那边（本仓只留页面）。 -->
-    <ProjectReference Include="..\..\..\aether-ai-integrations\src\Aether.AppAudit.AI\Aether.AppAudit.AI.csproj" />
+    <!-- （⑭ Aether.AppAudit.AI 已于 2026-10-30 退休移除——判定用 SystemTools 的 WebSearch/FetchUrl 即可，源码在 ⑭ git 历史。） -->
     <!-- ⑫ MCP 客户端（连接器）：stdio/HTTP 两种传输 + 目录配置 + 管理服务。手机端只接 HTTP——
          stdio 要 spawn 子进程，iOS 沙盒禁止；取舍在 BuildProvider（AddMcpServersFromDirectory 的 filter）。 -->
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Mcp\Aether.AI.Mcp.csproj" />
