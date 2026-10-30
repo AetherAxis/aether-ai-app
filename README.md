@@ -196,10 +196,13 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
   保存/删除 → `store.Changed` → `ChatViewModel.RefreshAgentTargetsAsync()` 热刷新聊天下拉，
   重设选中项时经 `_rebuildingTargets` 抑制「用户切目标 → 开新会话」的副作用。
 - ⑫ 侧只加了一个**纯增量**字段 `AgentDefinition.Description`（给人看的摘要，与喂模型的 `Instructions` 分开）。
-- **入口 = 输入卡 ⚙ 按钮（2026-10-29 撤哨兵）**：Agents 不再是 nav 页 —— agent 下拉**纯选择**，
-  旁边的 ⚙ 小按钮开管理窗（桌面模态 880×860 / 移动内嵌浮层，宿同一份 `AgentsView` + `AgentsViewModel`）。
-  撤哨兵原因：「下拉末项选『管理 agent…』→ VM 立刻把选中弹回原 agent」的模式要在 ComboBox 选中提交链里
-  改选中状态——控件层会卡在哨兵/旧值上与 VM 脱钩（两轮实测 bug），且观感拙劣；按钮化后整类回弹问题不存在。
+- **入口与模型完全同构（2026-10-29 对齐）**：Agents 不再是 nav 页 —— agent 下拉末项哨兵「管理 agent…」→
+  模态窗（桌面 880×860）/ 内嵌浮层（移动），宿同一份 `AgentsView` + `AgentsViewModel`。**对齐三件套**
+  （此前 agent 侧一件都没有，是「删/编 agent 后下拉卡旧值、哨兵选中不弹回」两轮 bug 的根因）：
+  ① `AgentTargetItem` 改 **record（值相等）**——热刷新 Clear+重建后 ComboBox 按值匹配新实例，选中无缝保持
+  （class 引用相等的年代重建即失配）；② `SelectedAgentTarget` 手写 setter + **双通知弹回**（先置 null 终结
+  ComboBox 选中提交批次、再回原值——生成 setter 的单次写回会被提交链吞）；③ 重建后按 `_lastAgentId` 直赋新实例
+  （与 `RefreshLlmProfiles` 的 IsCurrent 同构）。
   旧布局档案（含 agents tab）由 ⑩ 的 `CoversSameRegions` 判定结构变化后自动回退默认，无迁移负担。
 - **2026-10-29 工具勾选按类别分组（可展开/收起）**：「允许的工具」不再平铺——按 ToolRegistry 类别分组，组默认**收起**
   （▸/▾ 折叠箭头切换展开），组头「类别（N）」**三态勾选**：勾=全选组内 / 取消=全不选 / 部分选中显示不定态——

@@ -10,8 +10,10 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Aether.AI.App.ViewModels;
 
-/// <summary>对话目标（下拉项）：catalog AgentDefinition 的展示形态。</summary>
-public sealed partial class AgentTargetItem : ObservableObject
+/// <summary>对话目标（下拉项）：catalog AgentDefinition 的展示形态。
+/// **record（值相等，2026-10-29 对齐模型下拉）**——目标池热刷新（Clear+重建）后 ComboBox 按**值**匹配新实例，
+/// 选中无缝保持；class 引用相等的年代重建即失配，是「删/编 agent 后下拉卡旧值」的根因之一。</summary>
+public sealed record AgentTargetItem
 {
     public string Id { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
@@ -20,6 +22,9 @@ public sealed partial class AgentTargetItem : ObservableObject
     public string DisplayIcon { get; init; } = "🧭";
     /// <summary>是否启用 4 档模式选择器（EnableAgentModeProvider 的 agent 才有）。</summary>
     public bool EnableAgentModeProvider { get; init; }
+
+    /// <summary>末项哨兵「管理 agent…」：选中它不开新会话，只打开管理窗（与模型下拉同一套交互）。</summary>
+    public bool IsManage { get; init; }
 }
 
 /// <summary>
@@ -109,6 +114,12 @@ public partial class ChatViewModel : ObservableObject
     /// <summary>Agents 保存/删除自定义 agent 后热刷新目标池：保留当前选中（按 Id），不重置会话。</summary>
     public Task RefreshAgentTargetsAsync() => LoadAgentTargetsAsync(SelectedAgentTarget?.Id);
 
+    /// <summary>末项哨兵「管理 agent…」被选中 → 宿主（ChatView）打开 agent 管理窗口。</summary>
+    public event Action? ManageAgentsRequested;
+
+    /// <summary>哨兵 Id（不进偏好、不参与会话映射）。</summary>
+    public const string ManageAgentsId = "__manage_agents__";
+
     private async Task LoadAgentTargetsAsync(string? preferId)
     {
         var defs = await _agentCatalog.GetAllAsync();   // 目录每次枚举求值——新 agent 立刻可见
@@ -120,12 +131,20 @@ public partial class ChatViewModel : ObservableObject
                 AgentTargetItems.Clear();
                 foreach (var d in defs)
                     AgentTargetItems.Add(ToTargetItem(d));
-                // 纯选择下拉（管理入口 = 输入卡的 ⚙ 按钮，2026-10-29 撤哨兵——「选中哨兵再弹回」的
-                // 回弹模式在 ComboBox 选中提交链里改选中状态，控件层会卡旧值/哨兵，与 VM 脱钩）。
-                // 优先恢复原选中；否则落第一个 agent。全删光时 restore 为 null → 清空选中
+                // 末项：管理入口（与模型下拉的「管理模型…」同一套交互）
+                AgentTargetItems.Add(new AgentTargetItem
+                {
+                    Id = ManageAgentsId,
+                    Name = "管理 agent…",
+                    Description = "新建 / 编辑自定义 agent（LLM 或规则大脑）",
+                    DisplayIcon = "⚙",
+                    IsManage = true,
+                });
+                // 优先恢复原选中；否则落第一个真实 agent。全删光时 restore 为 null → 清空选中
                 // （输入卡会给「还没有 agent」的提示，而不是停在一个已不存在的 agent 上）。
                 var restore = AgentTargetItems.FirstOrDefault(t => t.Id == preferId)
-                              ?? AgentTargetItems.FirstOrDefault();
+                              ?? AgentTargetItems.FirstOrDefault(t => !t.IsManage);
+                _lastAgentId = restore?.Id;
                 SelectedAgentTarget = restore;
             }
             finally { _rebuildingTargets = false; }
@@ -265,25 +284,45 @@ public partial class ChatViewModel : ObservableObject
 
     public ObservableCollection<AgentTargetItem> AgentTargetItems { get; } = new();
 
-    [ObservableProperty]
+    private string? _lastAgentId;    // 最后一个「真实」agent Id（哨兵不计入，选中哨兵后弹回它）
+
     private AgentTargetItem? _selectedAgentTarget;
 
-    /// <summary>选中目标变化：更新模式支持；非启动期统一开新会话 + 持久化选中。
-    /// （2026-10-29 撤哨兵：下拉纯选择，管理入口 = 输入卡的 ⚙ 按钮——「选哨兵再弹回」会在 ComboBox
-    /// 选中提交链里改选中状态导致控件卡旧值，整类回弹 bug 随哨兵一起消失。）</summary>
-    partial void OnSelectedAgentTargetChanged(AgentTargetItem? value)
+    /// <summary>选中的聊天目标（手写 setter，**与 <see cref="SelectedLlm"/> 同一套机制**——2026-10-29 对齐）：
+    /// 末项哨兵「管理 agent…」→ **双通知弹回**原 agent（先置 null 终结 ComboBox 的选中提交批次、再回原值；
+    /// 生成 setter 的单次写回会被提交链吞、卡在哨兵上）+ 请宿主开管理窗（不开新会话、不改模式）。
+    /// 正常分支：更新模式支持；非启动期统一开新会话 + 持久化选中。</summary>
+    public AgentTargetItem? SelectedAgentTarget
     {
-        HasModeSupport = value?.EnableAgentModeProvider == true;
-        _syncingMode = true;
-        SelectedChatMode = ChatMode.AutoEdit;
-        _syncingMode = false;
-        if (_isInitializing || _rebuildingTargets || value is null) return;
+        get => _selectedAgentTarget;
+        set
+        {
+            if (ReferenceEquals(_selectedAgentTarget, value)) return;
+            if (value is { IsManage: true })
+            {
+                _selectedAgentTarget = null;
+                OnPropertyChanged(nameof(SelectedAgentTarget));
+                _selectedAgentTarget = AgentTargetItems.FirstOrDefault(t => t.Id == _lastAgentId);
+                OnPropertyChanged(nameof(SelectedAgentTarget));
+                HasModeSupport = _selectedAgentTarget?.EnableAgentModeProvider == true;
+                ManageAgentsRequested?.Invoke();
+                return;
+            }
+            _selectedAgentTarget = value;
+            OnPropertyChanged(nameof(SelectedAgentTarget));
+            if (!_rebuildingTargets && value is not null) _lastAgentId = value.Id;
+            HasModeSupport = value?.EnableAgentModeProvider == true;
+            _syncingMode = true;
+            SelectedChatMode = ChatMode.AutoEdit;
+            _syncingMode = false;
+            if (_isInitializing || _rebuildingTargets || value is null) return;
 
-        // 用户主动切换目标 → 开新会话（会话已持久化，误切可从历史找回）。切会话不取消背景 run。
-        SetCurrentInternal(new ConversationRuntime(Guid.Empty));
-        foreach (var c in Conversations) c.IsCurrent = false;
-        _preferences.SetAsync("chat.selectedAgent", value.Id).SafeFireAndForget();
-        RefreshModeAsync().SafeFireAndForget();
+            // 用户主动切换目标 → 开新会话（会话已持久化，误切可从历史找回）。切会话不取消背景 run。
+            SetCurrentInternal(new ConversationRuntime(Guid.Empty));
+            foreach (var c in Conversations) c.IsCurrent = false;
+            _preferences.SetAsync("chat.selectedAgent", value.Id).SafeFireAndForget();
+            RefreshModeAsync().SafeFireAndForget();
+        }
     }
 
     // —— 最近会话列表（侧栏） ——
@@ -321,8 +360,8 @@ public partial class ChatViewModel : ObservableObject
             {
                 _llmState.Select(value.Name);
                 // 换档案对「跟随当前档案」的 agent 都生效（通用助手 / 用户自建 LLM agent）：
-                // 逐个失效，下一轮对话即用新模型（与配置窗同一条路）。目标池纯选择（无哨兵项）。
-                foreach (var item in AgentTargetItems)
+                // 逐个失效，下一轮对话即用新模型（与配置窗同一条路）。哨兵项不参与。
+                foreach (var item in AgentTargetItems.Where(t => !t.IsManage))
                     _agentRunner.Invalidate(item.Id);
             }
         }

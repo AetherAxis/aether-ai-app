@@ -38,20 +38,23 @@ public partial class ChatView : UserControl
     private void HookVmEvents()
     {
         if (_hookedVm is not null)
+        {
             _hookedVm.ManageLlmRequested -= OnManageLlmRequested;
+            _hookedVm.ManageAgentsRequested -= OnManageAgentsRequested;
+        }
         _hookedVm = DataContext as ViewModels.ChatViewModel;
         if (_hookedVm is not null)
+        {
             _hookedVm.ManageLlmRequested += OnManageLlmRequested;
+            _hookedVm.ManageAgentsRequested += OnManageAgentsRequested;
+        }
     }
 
-    /// <summary>模型下拉里选中「管理模型…」→ 开配置窗。
+    /// <summary>下拉里选中「管理模型…」/「管理 agent…」→ 开对应窗口。
     /// 延到下一帧：先让下拉浮层收起，再弹窗，避免抢焦点。</summary>
     private void OnManageLlmRequested() => Dispatcher.UIThread.Post(ShowModelSettings);
 
-    /// <summary>输入卡 ⚙ 按钮 → agent 管理窗（桌面模态 / 移动内嵌浮层）。
-    /// 2026-10-29 起 agent 管理入口从「下拉末项哨兵」改为独立按钮——下拉纯选择，
-    /// 哨兵的「选中即弹回」在 ComboBox 提交链里改选中状态会卡旧值。</summary>
-    private void OnManageAgents(object? sender, RoutedEventArgs e) => ShowAgentManager();
+    private void OnManageAgentsRequested() => Dispatcher.UIThread.Post(ShowAgentManager);
 
     // —— 模型设置浮层（移动形态）——
 

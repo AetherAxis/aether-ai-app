@@ -277,8 +277,8 @@ public class CustomAgentTests : IDisposable
         store.Save(Array.Empty<CustomAgent>());
         Assert.Empty(await catalog.GetAllAsync());
         await vm.RefreshAgentTargetsAsync();
-        Assert.Null(vm.SelectedAgentTarget);              // 没 agent 了 → 输入卡提示去 ⚙ 管理
-        Assert.Empty(vm.AgentTargetItems);               // 下拉纯选择（2026-10-29 撤哨兵后全删光 = 空）
+        Assert.Null(vm.SelectedAgentTarget);              // 没 agent 了 → 输入卡提示去「管理 agent…」
+        Assert.Single(vm.AgentTargetItems, t => t.IsManage);   // 下拉只剩哨兵（与模型下拉同构）
     }
 
     [Theory]
@@ -342,6 +342,37 @@ public class CustomAgentTests : IDisposable
     }
 
     /// <summary>下拉末项「管理 agent…」= 管理入口：选中它只发意图、弹回原 agent，**不**触发「切目标开新会话」。</summary>
+    /// <summary>哨兵「管理 agent…」（2026-10-29 对齐模型下拉）：选中它只发 ManageAgentsRequested、
+    /// 双通知弹回原 agent（不停在哨兵上）、**不开新会话**——与 SelectedLlm 同一套机制（record 值相等 + 手写 setter）。</summary>
+    [Fact]
+    public async Task Manage_sentinel_bounces_back_without_resetting_conversation()
+    {
+        var provider = BuildProvider(demoAgents: true);
+        var vm = provider.GetRequiredService<ChatViewModel>();
+        await vm.InitializeAsync();
+
+        var fixture = Path.Combine(_dataDir, "manage-fixture.txt");
+        await File.WriteAllTextAsync(fixture, "x");
+        vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "rule-demo");
+        vm.InputText = $"读{fixture}";
+        await vm.SendInputCommand.ExecuteAsync(null);
+
+        var manage = Assert.Single(vm.AgentTargetItems, t => t.IsManage);
+        Assert.Same(vm.AgentTargetItems[^1], manage);            // 永远是末项
+        var before = vm.SelectedAgentTarget;
+        var conversation = Assert.Single(vm.Conversations);
+
+        var requests = 0;
+        vm.ManageAgentsRequested += () => requests++;
+
+        vm.SelectedAgentTarget = manage;
+
+        Assert.Equal(1, requests);                              // 宿主据此开管理窗
+        Assert.Equal(before!.Id, vm.SelectedAgentTarget?.Id);   // 弹回原 agent，不停在「管理 agent…」
+        Assert.Same(conversation, Assert.Single(vm.Conversations));
+        Assert.True(conversation.IsCurrent);                    // 没开新会话
+    }
+
     /// <summary>删除后从目录与下拉里消失（不需要重启）。</summary>
     [Fact]
     public async Task Deleted_agent_disappears_from_catalog()
