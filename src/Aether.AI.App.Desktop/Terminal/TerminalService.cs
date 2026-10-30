@@ -136,7 +136,14 @@ public sealed class TerminalService : ITerminalService, IAsyncDisposable
 
         TerminalView? view;
         lock (_lock) view = _view;
-        view?.Host.Children.Add(ctrl);
+        if (view is not null)
+        {
+            // 挂进活视图：清名义尺寸由布局接管（拉伸填满）——名义尺寸只服务 detached 起壳。
+            // （漏清 = Stretch 对齐 + 显式 560×320 = 居中小方框——2026-10-29 用户实测抓出。）
+            ctrl.Width = double.NaN;
+            ctrl.Height = double.NaN;
+            view.Host.Children.Add(ctrl);
+        }
 
         var (shell, args) = ResolveShell();
         var wd = string.IsNullOrWhiteSpace(info.Cwd)
