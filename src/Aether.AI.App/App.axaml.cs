@@ -99,6 +99,7 @@ public partial class App : Application
             _ = provider.GetRequiredService<ChatViewModel>().InitializeAsync();
             if (desktop.Args?.Contains("--dump-layout") == true) DumpLayoutAsync(window, desktop, shell);
             if (desktop.Args?.Contains("--tab-switch-test") == true) TabSwitchTestAsync(provider, shell, desktop);
+            if (desktop.Args?.Contains("--approval-thread-test") == true) ApprovalThreadTestAsync(provider, desktop);
             if (desktop.Args?.Contains("--view-recycle-test") == true) HeadGuiHook?.Invoke(provider, desktop);
         }
         else if (ApplicationLifetime is IActivityApplicationLifetime activity)
@@ -276,6 +277,52 @@ public partial class App : Application
             await Task.Delay(300);
             desktop.Shutdown();
         }
+    }
+
+    /// <summary>
+    /// --approval-thread-test（2026-10-30）：「审批弹窗从线程池线程发起」的崩溃复现口径。
+    /// 根因（DiagnosticReports Retired/Aether.AI.App.Desktop-2026-10-29-183431.ips 栈实锤）：审批解析器跑在
+    /// MAF agent 循环深处的 .NET TP Worker 上（ConfigureAwait 丢 UI 上下文），NSWindow 在非主线程创建 →
+    /// NSException → abort → 整个进程 SIGABRT（用户实测「审查应用时 agent 突然退出」）。
+    /// 本口径从 Task.Run（线程池）发起真实审批 → 修复前进程当场崩；修复后 marshal 到 UI 线程弹窗、
+    /// 程序化关窗、ShowAsync 正常返回 null → exit 0。
+    /// </summary>
+    private static async void ApprovalThreadTestAsync(IServiceProvider provider,
+        Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var ok = false;
+        var detail = "";
+        try
+        {
+            var svc = provider.GetRequiredService<Aether.AI.App.Core.IApprovalDialogService>();
+            var request = new Aether.AI.Core.Agents.ToolApprovalRequest(
+                "thread-test-1", "browser_get_cookies", "call-1",
+                new Dictionary<string, object?> { ["cookieNames"] = null } as Dictionary<string, object>);
+
+            // 从线程池线程发起（复现 MAF 深处的上下文丢失路径）——不 await：弹窗期间关窗收尾
+            var pending = System.Threading.Tasks.Task.Run(() => svc.ShowAsync(request));
+            await Task.Delay(1500);   // 修复前：这一秒内进程已 SIGABRT，到不了这里
+
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                var dlg = desktop.Windows.OfType<ApprovalDialog>().FirstOrDefault();
+                dlg?.Close(null);   // 程序化关窗 → ShowDialog 返回 null（用户取消语义）
+            });
+            var decision = await pending;
+            ok = true;   // 没崩 + 正常返回 = marshal 生效
+            detail = $"decision={decision?.Approved.ToString() ?? "null"}";
+        }
+        catch (Exception ex)
+        {
+            detail = ex.Message;
+            Console.WriteLine($"[approval-thread] EXCEPTION ❌ {ex}");
+        }
+        Console.WriteLine(ok
+            ? $"[approval-thread] PASS ✅ 线程池线程发起审批已 marshal 到 UI 线程（{detail}）"
+            : $"[approval-thread] FAIL ❌ {detail}");
+        Environment.ExitCode = ok ? 0 : 1;
+        await Task.Delay(300);
+        desktop.Shutdown();
     }
 
     /// <summary>
