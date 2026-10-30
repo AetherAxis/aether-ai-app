@@ -182,7 +182,7 @@ chat（Agents 页已于同日改为 agent 下拉里的管理弹窗，见下文�
 | 大脑 | 用户填什么 | 映射到 ⑫ |
 |---|---|---|
 | LLM | 系统提示词、模型档案（可设「跟随当前选中档案」）、允许的工具、工具审批开关、是否开 4 档模式 | `EngineKind.Llm` + `Instructions`/`ModelId`/`Tools`/`RequireToolApproval`/`EnableAgentModeProvider` |
-| 规则 | 触发正则、动作工具（可空=直接回复）、工具参数 JSON 模板、回复模板、未命中兜底 | `EngineKind.Rule` + `RuleProgram`（调工具时自动生成两步：trigger(MaxToolCalls=0) → reply(MinToolCalls=1)） |
+| 规则 | 触发正则、**「允许的工具」勾选（2026-10-29 开放——白名单=勾选集，同 LLM/代码大脑）**、动作工具（从勾选里选；空=直接回复）、工具参数 JSON 模板、回复模板、未命中兜底 | `EngineKind.Rule` + `RuleProgram`（调工具时自动生成两步：trigger(MaxToolCalls=0) → reply(MinToolCalls=1)；工具白名单=`Tools` 勾选集，旧数据回退 `[ToolName]`；规则引擎走同一套 ToolRegistry 管线，`RequireToolApproval` 对规则大脑同样生效——审批演示即规则 agent） |
 | 代码 | 一段继承 `CodeRuleBrain` 的 C# 源码（重写 `RunAsync`，`await Call("ReadFile", ...)` 调真实工具）、允许的工具、工具审批开关 | `EngineKind.Code` + ⑫ 编译管线：`CustomAgentStore` → `AgentCodeNoteSource`（`ICodeNoteSource`）→ `ICodeCompilationService`（Roslyn，可卸载 ALC）→ `ICodeBrainRegistry`，跑起来就是标准 code brain |
 
 - 代码大脑 Roslyn **只在桌面 head** 注册（`Program.Main` 里 `App.ServicesConfigure = s => s.AddCSharpBrainCompilation()`）——移动闭包不带 Roslyn/FCS，移动端遇到代码 agent 会明确报「未注册 C# 编译器」。

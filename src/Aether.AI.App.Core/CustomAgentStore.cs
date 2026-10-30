@@ -278,7 +278,11 @@ public sealed class CustomAgentStore
             Description = a.Description,
             Engine = EngineKind.Rule,
             Memory = AgentMemoryMode.Off,
-            Tools = usesTool ? new[] { a.ToolName! } : Array.Empty<string>(),
+            // 工具白名单 = 勾选集（2026-10-29 起规则大脑也开放「允许的工具」勾选；动作工具从中选）。
+            // 旧数据没存集合（勾选区对规则大脑隐藏的年代）→ 回退 [ToolName]，行为不变。
+            Tools = a.Tools is { Count: > 0 } allowed ? allowed
+                : usesTool ? new[] { a.ToolName! }
+                : Array.Empty<string>(),
             RequireToolApproval = a.RequireToolApproval,
             Rules = new RuleProgram
             {

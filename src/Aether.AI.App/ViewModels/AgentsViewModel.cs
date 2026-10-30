@@ -154,6 +154,9 @@ public partial class AgentsViewModel : ObservableObject
             foreach (var t in g) group.Add(t);
             ToolGroups.Add(group);
         }
+        // 勾选变化 → 重建规则表单的「动作工具」下拉（只列勾选项）。
+        foreach (var t in ToolOptions)
+            t.PropertyChanged += (s, e) => { if (e.PropertyName == nameof(ToolOption.IsSelected)) RefreshToolNames(); };
 
         Reload();
         _store.Changed += Reload;
@@ -222,12 +225,14 @@ public partial class AgentsViewModel : ObservableObject
         FormModelProfile = ModelProfiles.Contains(keep ?? string.Empty) ? keep : FollowCurrentProfile;
     }
 
+    /// <summary>规则表单「动作工具」下拉：只列**勾选的**允许工具（2026-10-29 起规则大脑同享工具勾选；
+    /// 勾选变化即时重建，当前选择被取消勾选时回落到「不调用工具」）。</summary>
     private void RefreshToolNames()
     {
         var keep = FormToolName;
         RuleToolNames.Clear();
         RuleToolNames.Add(NoToolChoice);
-        foreach (var t in ToolOptions) RuleToolNames.Add(t.Name);
+        foreach (var t in ToolOptions.Where(t => t.IsSelected)) RuleToolNames.Add(t.Name);
         FormToolName = RuleToolNames.Contains(keep ?? string.Empty) ? keep : NoToolChoice;
     }
 
@@ -255,7 +260,7 @@ public partial class AgentsViewModel : ObservableObject
 
     [ObservableProperty] private string _formMatchRegex = string.Empty;
     [ObservableProperty] private string _formToolName = NoToolChoice;
-    [ObservableProperty] private string _formToolArgs = "{\n  \"text\": \"{user.1}\"\n}";
+    [ObservableProperty] private string _formToolArgs = "{\n  \"filePath\": \"{user.1}\"\n}";
     [ObservableProperty] private string _formReplyTemplate = string.Empty;
     [ObservableProperty] private string _formNoMatchReply = "（这条消息没有匹配到规则）";
 
@@ -267,8 +272,8 @@ public partial class AgentsViewModel : ObservableObject
     public bool IsLlmForm => FormKindIndex == 0;
     public bool IsRuleForm => FormKindIndex == 1;
     public bool IsCodeForm => FormKindIndex == 2;
-    /// <summary>LLM / 代码大脑都会调工具（规则大脑的工具走「动作工具」单选框）——决定「允许的工具」一栏显不显示。</summary>
-    public bool IsToolForm => IsLlmForm || IsCodeForm;
+    // 「工具与审批」区对**三类大脑都显示**（2026-10-29 起规则大脑也开放「允许的工具」勾选——
+    // 规则引擎走同一套 ToolRegistry 管线，白名单 = 勾选集，「动作工具」从中选）。
     /// <summary>规则表单：选中了动作工具（决定「工具参数」一栏显不显示）。</summary>
     public bool UsesRuleTool => !string.IsNullOrEmpty(FormToolName) && FormToolName != NoToolChoice;
     public bool IsEditing => EditingId is not null;
@@ -281,7 +286,6 @@ public partial class AgentsViewModel : ObservableObject
         OnPropertyChanged(nameof(IsLlmForm));
         OnPropertyChanged(nameof(IsRuleForm));
         OnPropertyChanged(nameof(IsCodeForm));
-        OnPropertyChanged(nameof(IsToolForm));
         // 切到代码大脑且还是空白 → 预填一个能跑通的示例（省得用户对着空编辑器猜契约）。
         if (value == 2 && string.IsNullOrWhiteSpace(FormSourceCode)) FormSourceCode = CodeTemplate;
     }
@@ -315,7 +319,7 @@ public partial class AgentsViewModel : ObservableObject
         FormMatchRegex = string.Empty;
         RefreshToolNames();
         FormToolName = NoToolChoice;
-        FormToolArgs = "{\n  \"text\": \"{user.1}\"\n}";
+        FormToolArgs = "{\n  \"filePath\": \"{user.1}\"\n}";
         FormReplyTemplate = string.Empty;
         FormNoMatchReply = "（这条消息没有匹配到规则）";
         FormSourceCode = string.Empty;
@@ -341,7 +345,12 @@ public partial class AgentsViewModel : ObservableObject
         FormMatchRegex = a.MatchRegex ?? string.Empty;
         RefreshToolNames();
         FormToolName = string.IsNullOrWhiteSpace(a.ToolName) ? NoToolChoice : a.ToolName;
-        FormToolArgs = string.IsNullOrWhiteSpace(a.ToolArgsTemplate) ? "{\n  \"text\": \"{user.1}\"\n}" : a.ToolArgsTemplate;
+        // 旧数据兼容（勾选区对规则大脑隐藏的年代）：Tools 空但 ToolName 有值 → 动作工具自动补进勾选集
+        // （下拉只列勾选项，不补的话重存一次动作工具就丢了）。
+        if (!string.IsNullOrWhiteSpace(a.ToolName)
+            && ToolOptions.FirstOrDefault(t => t.Name == a.ToolName) is { } actionTool)
+            actionTool.IsSelected = true;
+        FormToolArgs = string.IsNullOrWhiteSpace(a.ToolArgsTemplate) ? "{\n  \"filePath\": \"{user.1}\"\n}" : a.ToolArgsTemplate;
         FormReplyTemplate = a.ReplyTemplate;
         FormNoMatchReply = string.IsNullOrWhiteSpace(a.NoMatchReply) ? string.Empty : a.NoMatchReply;
         FormSourceCode = a.SourceCode;

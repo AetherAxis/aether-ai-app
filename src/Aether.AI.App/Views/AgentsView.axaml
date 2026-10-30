@@ -156,8 +156,8 @@
               </StackPanel>
             </StackPanel>
 
-            <!-- ——— 共用：工具与审批（LLM / 代码大脑都会调工具） ——— -->
-            <StackPanel Spacing="14" IsVisible="{Binding IsToolForm}">
+            <!-- ——— 共用：工具与审批（三类大脑都调工具——规则大脑的白名单 = 勾选集，动作工具从中选） ——— -->
+            <StackPanel Spacing="14">
               <CheckBox IsChecked="{Binding FormRequireApproval}" FontSize="12" Content="工具调用前审批"/>
               <StackPanel Spacing="6">
                 <TextBlock Text="允许的工具" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
@@ -217,7 +217,7 @@
 
               <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
                 <StackPanel Grid.Column="0" Spacing="6">
-                  <TextBlock Text="动作：调用工具" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                  <TextBlock Text="动作：调用工具（从「允许的工具」勾选里选）" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                   <ComboBox ItemsSource="{Binding RuleToolNames}" SelectedItem="{Binding FormToolName}"
                             MinHeight="36" FontSize="13" HorizontalAlignment="Stretch"/>
                 </StackPanel>
