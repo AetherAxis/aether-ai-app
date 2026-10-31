@@ -71,6 +71,9 @@ public partial class App : Application
 
     public override void Initialize()
     {
+        // 崩溃防线最先装（幂等）：桌面 Program.Main 已装过一次，这里覆盖**直接起 App** 的路径
+        //（iOS/Android head 不经桌面 Program）。装不上也不能拦启动——自身包 try/catch。
+        try { CrashGuard.Install(ResolveDataDirectory()); } catch { /* 黑匣子装不上也要继续跑 */ }
         AvaloniaXamlLoader.Load(this);
     }
 
@@ -512,8 +515,10 @@ public partial class App : Application
     /// 的 UserProfile 映射到沙箱 files 目录，均可写）；**iOS 真机的容器根禁止建目录**（EPERM——模拟器不限制，
     /// 真机限制，2026-10-24 实机闪退根因）→ 退 <c>~/Library/Application Support/aether-ai-app</c>
     /// （iOS 惯例位：沙箱内可写、随设备备份）。
+    /// public（2026-10-31）：桌面 head 的 Program.Main 要在 Avalonia 起来**之前**装
+    /// <see cref="CrashGuard"/>（黑匣子落点 = 数据目录 logs/ 子目录）。
     /// </summary>
-    private static string ResolveDataDirectory()
+    public static string ResolveDataDirectory()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (string.IsNullOrEmpty(home))

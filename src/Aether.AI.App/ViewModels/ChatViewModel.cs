@@ -79,7 +79,8 @@ public partial class ChatViewModel : ObservableObject
         RefreshLlmProfiles();
 
         // Agents 页保存/删除自定义 agent → 目标池热刷新（保持在当前 agent 上，不打断会话）。
-        _agentStore.Changed += () => _ = RefreshAgentTargetsAsync();
+        // SafeFireAndForget：事件回调里的漏网异常只记日志，不上抛杀进程。
+        _agentStore.Changed += () => RefreshAgentTargetsAsync().SafeFireAndForget();
 
         // 流式渲染引擎：审批/计划快照全在引擎内。模式/模式支持逐工具实时读（运行中切档立即生效）；
         // isCurrentRuntime 决定背景会话计划变更是否上抛 PlanSummary。
@@ -107,6 +108,12 @@ public partial class ChatViewModel : ObservableObject
             var saved = await _preferences.GetAsync("chat.selectedAgent");
             await LoadAgentTargetsAsync(saved);
             await RefreshConversationsAsync();
+        }
+        catch (Exception ex)
+        {
+            // 启动失败不崩（本方法被 fire-and-forget 调用，异常无人接 = 进程死）：降级为状态栏提示。
+            CrashGuard.Log("ChatViewModel.Initialize", ex);
+            StatusText = $"初始化失败：{ex.Message}";
         }
         finally { _isInitializing = false; }
     }
@@ -430,6 +437,13 @@ public partial class ChatViewModel : ObservableObject
                     runtime.NextRunSeq = 1;
                 }
             }
+            catch (Exception ex)
+            {
+                // 历史损坏/DB 故障不崩进程（RelayCommand 重抛链）——降级为空会话 + 状态栏提示。
+                CrashGuard.Log("ChatViewModel.ResumeConversation", ex);
+                runtime.NextRunSeq = 1;
+                StatusText = $"加载会话历史失败：{ex.Message}";
+            }
             finally
             {
                 runtime.IsLoadingHistory = false;
@@ -531,9 +545,17 @@ public partial class ChatViewModel : ObservableObject
         if (!HasModeSupport || IsAgentRunning || _currentConversationId == Guid.Empty) return;
         PlanAwaitingAccept = false;
         _syncingMode = true; SelectedChatMode = ChatMode.AutoEdit; _syncingMode = false;
-        await _agentRunner.SetModeAsync(_currentConversationId, ChatMode.AutoEdit.ToDesiredMode());
-        InputText = "（已接受计划，进入执行模式）";
-        await SendInputAsync();
+        try
+        {
+            await _agentRunner.SetModeAsync(_currentConversationId, ChatMode.AutoEdit.ToDesiredMode());
+            InputText = "（已接受计划，进入执行模式）";
+            await SendInputAsync();   // SendInputAsync 自带轮次防线
+        }
+        catch (Exception ex)
+        {
+            CrashGuard.Log("ChatViewModel.AcceptPlan", ex);
+            StatusText = $"进入执行模式失败：{ex.Message}";
+        }
     }
 
     // —— 停止 ——
@@ -584,59 +606,81 @@ public partial class ChatViewModel : ObservableObject
         });
         Messages.Add(turn);
 
-        var justCreated = false;
-        // 待新聊天 → 首次发送才落库创建会话：占位 runtime 提升为真 runtime。
-        if (_currentConversationId == Guid.Empty)
+        // —— 最后防线（2026-10-31「对话运行中整个 app 崩溃」根治）——
+        // CommunityToolkit 8.4.2 的 AsyncRelayCommand 在按钮的**同步 Execute** 路径上会把 delegate
+        // 异常经 AwaitAndThrowIfFailed 重抛到线程池（本地控制台实测复现）→ 未处理异常 → 进程死。
+        // 引擎只罩 runAsync 本体；此处把落库/收尾/模式刷新等**任何**漏网异常收敛成本轮可见错误。
+        try
         {
-            justCreated = true;
-            var newId = Guid.NewGuid();
-            var realRt = new ConversationRuntime(newId) { NextRunSeq = 1, RunCts = runtime.RunCts };
-            runtime.RunCts = null;
-            foreach (var t in runtime.Messages) realRt.Messages.Add(t);
-            runtime.Messages.Clear();
-            _runtimes[newId] = realRt;
-            SetCurrentInternal(realRt);
-            runtime = realRt;
-            _currentConversationId = newId;
-            var conv = new Conversation
+            var justCreated = false;
+            // 待新聊天 → 首次发送才落库创建会话：占位 runtime 提升为真 runtime。
+            if (_currentConversationId == Guid.Empty)
             {
-                ConversationId = _currentConversationId,
-                AgentId = target.Id,
-                AgentName = target.Name,
-                Title = content.Length > 20 ? content[..20] + "…" : content,
-            };
-            await _conversationStore.SaveConversationAsync(conv);
-            await _dispatcher.InvokeAsync(() =>
-            {
-                Conversations.Insert(0, new ConversationItem
+                justCreated = true;
+                var newId = Guid.NewGuid();
+                var realRt = new ConversationRuntime(newId) { NextRunSeq = 1, RunCts = runtime.RunCts };
+                runtime.RunCts = null;
+                foreach (var t in runtime.Messages) realRt.Messages.Add(t);
+                runtime.Messages.Clear();
+                _runtimes[newId] = realRt;
+                SetCurrentInternal(realRt);
+                runtime = realRt;
+                _currentConversationId = newId;
+                var conv = new Conversation
                 {
-                    Id = conv.ConversationId, Title = conv.Title, Preview = content,
-                    DisplayTime = FormatTime(conv.UpdatedAt), AgentId = conv.AgentId, AgentName = conv.AgentName, IsCurrent = true,
-                    ResumeCommand = ResumeConversationCommand,
-                    DeleteCommand = DeleteConversationCommand,
+                    ConversationId = _currentConversationId,
+                    AgentId = target.Id,
+                    AgentName = target.Name,
+                    Title = content.Length > 20 ? content[..20] + "…" : content,
+                };
+                await _conversationStore.SaveConversationAsync(conv);
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    Conversations.Insert(0, new ConversationItem
+                    {
+                        Id = conv.ConversationId, Title = conv.Title, Preview = content,
+                        DisplayTime = FormatTime(conv.UpdatedAt), AgentId = conv.AgentId, AgentName = conv.AgentName, IsCurrent = true,
+                        ResumeCommand = ResumeConversationCommand,
+                        DeleteCommand = DeleteConversationCommand,
+                    });
+                    foreach (var c in Conversations) c.IsCurrent = c.Id == _currentConversationId;
                 });
-                foreach (var c in Conversations) c.IsCurrent = c.Id == _currentConversationId;
-            });
+            }
+
+            var fullText = new System.Text.StringBuilder();
+            var desiredMode = HasModeSupport ? SelectedChatMode.ToDesiredMode() : null;
+            runtime.TodosTouchedThisTurn = false;
+            var runItems = await _engine.RunTurnAsync(runtime, turn, target.Name,
+                (handlers, approvalResponder, ct) => _agentRunner.RunInteractiveAsync(
+                    _currentConversationId, target.Id, content, handlers, approvalResponder, desiredMode, ct),
+                fullText, runtime.RunCts?.Token ?? default);
+
+            // plan 模式轮、且本轮确实产出计划 → 待接受（驱动接受条）。已开始执行则不弹。
+            runtime.PlanAwaitingAccept = desiredMode == AgentModes.Plan && SelectedChatMode == ChatMode.Plan
+                && runtime.TodosTouchedThisTurn && runtime.HasActivePlan
+                && !runtime.ActiveTodos.Any(t => t.IsComplete);
+
+            // 持久化本轮为 run+events 并乐观 bump 侧栏项。
+            await PersistRunAsync(runtime, content, runItems, fullText.ToString());
+            if (HasModeSupport) await RefreshModeAsync();
         }
-
-        var fullText = new System.Text.StringBuilder();
-        var desiredMode = HasModeSupport ? SelectedChatMode.ToDesiredMode() : null;
-        runtime.TodosTouchedThisTurn = false;
-        var runItems = await _engine.RunTurnAsync(runtime, turn, target.Name,
-            (handlers, approvalResponder, ct) => _agentRunner.RunInteractiveAsync(
-                _currentConversationId, target.Id, content, handlers, approvalResponder, desiredMode, ct),
-            fullText, runtime.RunCts?.Token ?? default);
-
-        // plan 模式轮、且本轮确实产出计划 → 待接受（驱动接受条）。已开始执行则不弹。
-        runtime.PlanAwaitingAccept = desiredMode == AgentModes.Plan && SelectedChatMode == ChatMode.Plan
-            && runtime.TodosTouchedThisTurn && runtime.HasActivePlan
-            && !runtime.ActiveTodos.Any(t => t.IsComplete);
-
-        // 持久化本轮为 run+events 并乐观 bump 侧栏项。
-        await PersistRunAsync(runtime, content, runItems, fullText.ToString());
-        if (HasModeSupport) await RefreshModeAsync();
-
-        return;
+        catch (Exception ex)
+        {
+            // 漏网异常收敛：turn 转 Error + 可见错误段 + 状态栏提示 + 清运行态——**绝不外逃到命令层**。
+            CrashGuard.Log("ChatViewModel.SendInput", ex);
+            turn.Children.Add(new ChatMessageItem
+            {
+                Side = ChatMessageSide.Left,
+                ItemType = "text",
+                Sender = target.Name,
+                Content = $"[轮次异常：{ex.Message}]",
+            });
+            turn.Finish(TurnStatus.Error);
+            runtime.IsRunning = false;
+            runtime.RunCts?.Dispose();
+            runtime.RunCts = null;
+            StatusText = $"本轮失败：{ex.Message}";
+        }
 
         // —— 持久化 + 侧栏 bump（本地函数保持 SendInputAsync 主体可读） ——
         async Task PersistRunAsync(ConversationRuntime rt,

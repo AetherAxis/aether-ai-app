@@ -407,6 +407,34 @@ AddTerminalPanel 工具与服务同单例）；`--tools` 桌面 27 个含「终�
 （无视图可跑 / 附着续用 / **销毁视图后 PTY 仍活** / 重建视图续看——视图生命周期与 PTY 彻底解耦的端到端实证，
 经 `App.HeadGuiHook` 注入——harness 需要 head 内具体类型）。
 
+### M2-crashguard（2026-10-31）：对话链路崩溃防线——「运行中崩整个 app」根治
+
+**根因（最小复现实锤）**：CommunityToolkit 8.4.2 的 `AsyncRelayCommand` 在按钮的**同步 `Execute`** 路径上会把
+delegate 异常经 `AwaitAndThrowIfFailed` 重抛到线程池 → 未处理异常 → **进程死**。此前 `SendInputAsync` 主链路
+（落库/收尾/模式刷新）完全没有 try/catch——引擎的 catch 只罩 `runAsync` 本体，任何外围异常一冒头就是整 app 崩。
+（10-30 修的审批线程崩溃只是崩溃面之一；本次是把它兜成「无论哪里炸都不进程死」。）
+
+**三层防线**（每层独立成立，纵深防御）：
+
+1. **VM 最后防线**（`ChatViewModel`）：`SendInputAsync` 全体包 try/catch——漏网异常收敛为 `[轮次异常：…]`
+   可见错误段 + turn 转 Error + 状态栏提示 + 清运行态，**零外逃**；`InitializeAsync` / `ResumeConversationAsync`（历史
+   损坏） / `AcceptPlanAsync` / agent 目录热刷新（`SafeFireAndForget`）同批加固。
+2. **引擎层**（`ChatSessionEngine`）：① 所有 fire-and-forget 上屏回调经 `PostSafe`（lambda 吞异常记黑匣子——
+   `Dispatcher.Post` 无观察者，上抛 = UI 线程未处理异常 = 进程死）；② flush 定时器竞态根治——`flusherClosed` 关闸
+   （收尾后拒收新 chunk，杜绝 Change-after-Dispose 的 ODE 从流线程杀进程）+ 换表与入队同临界区（时序保序）+
+   收尾改**确定性 drain**（替换原「Change(0)+Delay(60)」窗口 hack）；③ 晚到回调踩已移除段的 `RemoveAt(-1)` 崩溃面
+   堵死（`IndexOf` = -1 时退化末尾追加）；④ 收尾迁移自身失败也清运行态（否则会话永远亮「运行中」）。
+3. **进程级兜底**（`CrashGuard`，App.Core）：`TaskScheduler.UnobservedTaskException` → 记黑匣子 + `SetObserved`
+   （fire-and-forget Task 漏网异常原本在 finalizer 线程重抛杀进程）；`AppDomain.UnhandledException` → 记黑匣子
+   （.NET 上兜不住但留住栈）。**黑匣子落 `<dataDir>/logs/app-log.txt`**（4MB 截断重开）——托管异常在 macOS
+   .ips/统一日志里零痕迹（10-30 崩溃实测两者皆空），下次再崩先看这里。桌面 `Program.Main` 第一行装（无头路径也
+   覆盖）、`App.Initialize` 幂等补装（移动 head），三 head 同一落点。
+
+**验收**：`CrashContainmentTests` 4 例——runner 中途炸 → Error 轮 + `[运行失败]` 零外逃；落库炸（新会话
+SaveConversation 抛 IOException）→ `[轮次异常]` 段 + 状态栏提示；晚到工具回调踩已收尾轮次 → 不抛（旧代码此路径
+`RemoveAt(-1)` → UI 线程死）+ 卡降级追加；黑匣子落盘断言。全套 86 测试 + `--smoke` 通过。同步 Execute 的重抛路径
+无法在测试进程内断言（会真杀进程）——测试断言的是其前置条件：**没有任何异常能逃出命令方法**。
+
 ### 移动端（方案A 实证，2026-10-24）
 
 同一份 ChatView/ChatViewModel/Core 直跑 iOS 与 Android（`src/Aether.AI.App.{iOS,Android}` head）：

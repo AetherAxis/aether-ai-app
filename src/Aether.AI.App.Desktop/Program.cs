@@ -19,6 +19,11 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // 崩溃防线最先装（2026-10-31「对话运行中整个 app 崩溃」根治层之一）：UnobservedTaskException
+        // 兜底 + 黑匣子（<dataDir>/logs/app-log.txt——托管异常在 macOS .ips/统一日志里零痕迹，
+        // 下次再崩先看黑匣子）。幂等：App.Initialize 会再装一次（覆盖直接起 App 的移动 head）。
+        CrashGuard.Install(App.ResolveDataDirectory());
+
         // 显式声明桌面宿主：命令工具 / 浏览器工具在无头巡检（--tools/--smoke/CI）里也要按桌面取舍。
         App.HeadHost = HostCapability.DesktopOnly;
         // 代码大脑只在桌面形态可编译执行：把 Roslyn 编译器注入共享组合根（App.BuildProvider）。

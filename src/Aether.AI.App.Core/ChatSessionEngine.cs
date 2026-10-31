@@ -92,37 +92,27 @@ public sealed class ChatSessionEngine
         // 连续同类型 chunk 合并进同一卡，仅在类型真切换时换段。
         // 流式期只更 Content（TextBlock 廉价、无 markdown 重解析）；完成时 FinalizeSegment 切
         // markdown viewer 一次性渲染格式。
+        // 2026-10-31 崩溃防线：① flusherClosed 关闸——轮次收尾后拒收新 chunk（晚到的流事件只进
+        // fullText 不再上屏），杜绝 Change-after-Dispose 的 ODE 从流线程杀进程；② 换表与入队都在
+        // pendingLock 临界区内（换表顺序 == 上屏顺序，杜绝在飞 flush 与最终 drain 的乱序/丢段）；
+        // ③ 定时器回调整段吞异常（Timer 线程的未处理异常同样等于进程死）。
         var pendingChunks = new List<(string Text, bool IsReasoning)>();
         var pendingLock = new object();
-        var flushTimer = new System.Threading.Timer(_ => _dispatcher.Post(() =>
+        var flusherClosed = false;
+        var flushTimer = new System.Threading.Timer(_ =>
         {
-            List<(string Text, bool IsReasoning)> snapshot;
-            lock (pendingLock)
+            try
             {
-                if (pendingChunks.Count == 0) return;
-                snapshot = pendingChunks;          // 整表换出：drain 原子，流式线程继续往新表 append 不互斥
-                pendingChunks = new List<(string, bool)>();
-            }
-            // 按真实时序处理；连续同类型 chunk 合并成一个字符串再追加（O(段数) 次拼接）。
-            var buf = new System.Text.StringBuilder();
-            bool? segType = null;
-            foreach (var (text, isReasoning) in snapshot)
-            {
-                if (segType is { } prev && prev != isReasoning)
+                lock (pendingLock)
                 {
-                    EnsureTextSegment(cursor, items, senderName, isReasoningContent: prev);
-                    cursor.Current.Content += buf.ToString();
-                    buf.Clear();
+                    if (pendingChunks.Count == 0) return;
+                    var snapshot = pendingChunks;      // 整表换出：drain 原子，流式线程继续往新表 append 不互斥
+                    pendingChunks = new List<(string, bool)>();
+                    PostSafe(() => ApplyChunks(cursor, items, senderName, snapshot));
                 }
-                segType = isReasoning;
-                buf.Append(text);
             }
-            if (buf.Length > 0 && segType is { } last)
-            {
-                EnsureTextSegment(cursor, items, senderName, isReasoningContent: last);
-                cursor.Current.Content += buf.ToString();
-            }
-        }), null, Timeout.Infinite, Timeout.Infinite);
+            catch (Exception ex) { CrashGuard.Log("ChatSessionEngine.FlushTimer", ex); }
+        }, null, Timeout.Infinite, Timeout.Infinite);
 
         // 审批状态持有（per-turn 闭包）：OnApprovalRequest 建卡，resolver 决定后迁移卡状态。
         // 请求是协作式的（一次只挂起一个），单一持有槽即够。
@@ -132,14 +122,24 @@ public sealed class ChatSessionEngine
             OnToken: (token, _) =>
             {
                 fullText.Append(token);
-                lock (pendingLock) pendingChunks.Add((token, false));
-                flushTimer.Change(150, Timeout.Infinite); // 批量刷新（节流 Content 增量→TextBlock 重排频率）
+                lock (pendingLock)
+                {
+                    if (flusherClosed) return Task.CompletedTask;   // 轮次已收尾——晚到 token 只进 fullText
+                    pendingChunks.Add((token, false));
+                }
+                try { flushTimer.Change(150, Timeout.Infinite); } // 批量刷新（节流 Content 增量→TextBlock 重排频率）
+                catch (ObjectDisposedException) { /* 关闸与 Dispose 的窄窗——丢弃即可 */ }
                 return Task.CompletedTask;
             },
             OnReasoning: (text, _) =>
             {
-                lock (pendingLock) pendingChunks.Add((text, true));
-                flushTimer.Change(150, Timeout.Infinite);
+                lock (pendingLock)
+                {
+                    if (flusherClosed) return Task.CompletedTask;
+                    pendingChunks.Add((text, true));
+                }
+                try { flushTimer.Change(150, Timeout.Infinite); }
+                catch (ObjectDisposedException) { }
                 return Task.CompletedTask;
             },
             OnToolEvent: (ev, _) =>
@@ -147,7 +147,7 @@ public sealed class ChatSessionEngine
                 // todos_* 调用由 OnTodoList 渲染为计划卡，不重复出工具卡。
                 if (ev.Name.StartsWith("todo", StringComparison.OrdinalIgnoreCase))
                     return Task.CompletedTask;
-                _dispatcher.Post(() => HandleToolEventSegmented(cursor, items, ev, senderName));
+                PostSafe(() => HandleToolEventSegmented(cursor, items, ev, senderName));
                 return Task.CompletedTask;
             },
             OnApprovalRequest: (req, _) =>
@@ -169,7 +169,7 @@ public sealed class ChatSessionEngine
                     ApprovalState = 0,
                 };
                 approvalCard = card;
-                _dispatcher.Post(() =>
+                PostSafe(() =>
                 {
                     var idx = items.IndexOf(cursor.Current);
                     if (idx < 0) idx = items.Count - 1;
@@ -181,19 +181,19 @@ public sealed class ChatSessionEngine
             },
             OnTodoList: (list, _) =>
             {
-                _dispatcher.Post(() => HandleTodoList(runtime, items, list, senderName));
+                PostSafe(() => HandleTodoList(runtime, items, list, senderName));
                 return Task.CompletedTask;
             },
             OnError: (text, _) =>
             {
-                _dispatcher.Post(() =>
+                PostSafe(() =>
                 {
                     EnsureTextSegment(cursor, items, senderName, isReasoningContent: false);
                     cursor.Current.Content += $"\n\n[错误：{text}]";
                 });
                 return Task.CompletedTask;
             },
-            OnUsage: info => _dispatcher.Post(() => runtime.TokenInfo = info));
+            OnUsage: info => PostSafe(() => runtime.TokenInfo = info));
 
         // 审批决定获取器（⑫ RunInteractiveAsync 的 resolver 缝）：
         // 自动批策略 → 立即决定；用户审批 → 模态对话框；取消 → null（本轮以已累积文本收敛）。
@@ -225,31 +225,100 @@ public sealed class ChatSessionEngine
         }
         finally
         {
-            // 最后一次 flush（确保剩余 token 写入）+ 停止定时器
-            flushTimer.Change(0, Timeout.Infinite);
-            await Task.Delay(60); // 等 flush 完成
+            // 收尾（2026-10-31 重构，替换原「Change(0)+Delay(60)」窗口竞态）：关闸拒收 → 同步 drain 残余
+            // chunk（与定时器 flush 同锁同序入队）→ 释放定时器 → 收尾态迁移。晚到的在飞 flush 由
+            // ApplyChunks 的吞异常包装兜底，不再可能踩到 FinalizeSegment 之后的列表状态。
+            Task finalFlush = Task.CompletedTask;
+            lock (pendingLock)
+            {
+                flusherClosed = true;
+                if (pendingChunks.Count > 0)
+                {
+                    var snapshot = pendingChunks;
+                    pendingChunks = new List<(string, bool)>();
+                    finalFlush = _dispatcher.InvokeAsync(() => SafeApplyChunks(cursor, items, senderName, snapshot));
+                }
+            }
             flushTimer.Dispose();
+            try { await finalFlush.ConfigureAwait(false); } catch { /* lambda 已吞异常，这里只是等上屏 */ }
 
             await _dispatcher.InvokeAsync(() =>
             {
-                FinalizeSegment(cursor.Current, items);
-                // 每轮一快照：本轮确有 todos 更新且仍有活动计划时，把计划卡插到本轮首（用户消息之后、
-                // agent 工作之前）——出现在"制定计划"的位置（参考 Claude Code）。TodosTouchedThisTurn
-                // 门控：HasActivePlan/ActiveTodos 跨轮保留供浮动面板显示，不门控则每轮插陈旧快照。
-                if (runtime.TodosTouchedThisTurn && runtime.HasActivePlan && runtime.ActiveTodos.Count > 0)
+                try
                 {
-                    var planCard = new ChatMessageItem { Side = ChatMessageSide.Left, ItemType = "plan", Sender = senderName, IsStreaming = false };
-                    foreach (var t in runtime.ActiveTodos)
-                        planCard.Todos.Add(new TodoItemVM { Title = t.Title, Description = t.Description, IsComplete = t.IsComplete });
-                    items.Insert(1, planCard); // items[0] = 用户消息
+                    FinalizeSegment(cursor.Current, items);
+                    // 每轮一快照：本轮确有 todos 更新且仍有活动计划时，把计划卡插到本轮首（用户消息之后、
+                    // agent 工作之前）——出现在"制定计划"的位置（参考 Claude Code）。TodosTouchedThisTurn
+                    // 门控：HasActivePlan/ActiveTodos 跨轮保留供浮动面板显示，不门控则每轮插陈旧快照。
+                    if (runtime.TodosTouchedThisTurn && runtime.HasActivePlan && runtime.ActiveTodos.Count > 0)
+                    {
+                        var planCard = new ChatMessageItem { Side = ChatMessageSide.Left, ItemType = "plan", Sender = senderName, IsStreaming = false };
+                        foreach (var t in runtime.ActiveTodos)
+                            planCard.Todos.Add(new TodoItemVM { Title = t.Title, Description = t.Description, IsComplete = t.IsComplete });
+                        items.Insert(1, planCard); // items[0] = 用户消息
+                    }
+                    turn.Finish(errored ? TurnStatus.Error : TurnStatus.Done);
+                    runtime.IsRunning = false;
+                    runtime.RunCts?.Dispose();
+                    runtime.RunCts = null;
                 }
-                turn.Finish(errored ? TurnStatus.Error : TurnStatus.Done);
-                runtime.IsRunning = false;
-                runtime.RunCts?.Dispose();
-                runtime.RunCts = null;
+                catch (Exception ex)
+                {
+                    // 收尾迁移本身失败也必须清运行态——否则会话永远亮着「运行中」
+                    CrashGuard.Log("ChatSessionEngine.Finalize", ex);
+                    try
+                    {
+                        turn.Finish(TurnStatus.Error);
+                        runtime.IsRunning = false;
+                        runtime.RunCts = null;
+                    }
+                    catch { /* 最后退路 */ }
+                }
             });
         }
         return items.ToList();
+    }
+
+    /// <summary>UI 线程 fire-and-forget 回调统一包装：lambda 内异常记黑匣子、不再上抛。
+    /// <see cref="IUiDispatcher.Post"/> 无观察者——上抛 = UI 线程未处理异常 = 整个进程崩溃
+    /// （2026-10-31「对话运行中崩 app」防线的一环）。</summary>
+    private void PostSafe(Action action) => _dispatcher.Post(() =>
+    {
+        try { action(); }
+        catch (Exception ex) { CrashGuard.Log("ChatSessionEngine.UI", ex); }
+    });
+
+    /// <summary><see cref="ApplyChunks"/> 的吞异常包装（flush / 最终 drain 都走这里）。</summary>
+    private void SafeApplyChunks(StreamCursor cursor, IList<ChatMessageItem> items, string senderName,
+        List<(string Text, bool IsReasoning)> snapshot)
+    {
+        try { ApplyChunks(cursor, items, senderName, snapshot); }
+        catch (Exception ex) { CrashGuard.Log("ChatSessionEngine.ApplyChunks", ex); }
+    }
+
+    /// <summary>一批流式 chunk 按真实时序上屏：连续同类型合并成一个字符串再追加（O(段数) 次拼接），
+    /// 仅在类型真切换时换段。（原 RunTurnAsync 的 flush 回调主体，抽出供定时器与最终 drain 复用。）</summary>
+    private void ApplyChunks(StreamCursor cursor, IList<ChatMessageItem> items, string senderName,
+        List<(string Text, bool IsReasoning)> snapshot)
+    {
+        var buf = new System.Text.StringBuilder();
+        bool? segType = null;
+        foreach (var (text, isReasoning) in snapshot)
+        {
+            if (segType is { } prev && prev != isReasoning)
+            {
+                EnsureTextSegment(cursor, items, senderName, isReasoningContent: prev);
+                cursor.Current.Content += buf.ToString();
+                buf.Clear();
+            }
+            segType = isReasoning;
+            buf.Append(text);
+        }
+        if (buf.Length > 0 && segType is { } last)
+        {
+            EnsureTextSegment(cursor, items, senderName, isReasoningContent: last);
+            cursor.Current.Content += buf.ToString();
+        }
     }
 
     /// <summary>用户审批路径：弹框拿决定；null（取消）→ 卡转拒绝 + 本轮收敛；决定 → 卡转批准 + 开新答案段承接恢复流。</summary>
@@ -260,11 +329,11 @@ public sealed class ChatSessionEngine
         var userDecision = _approvalDialog is null ? null : await _approvalDialog.ShowAsync(req).ConfigureAwait(false);
         if (userDecision is null)
         {
-            _dispatcher.Post(() => { if (card is not null) card.ApprovalState = 2; });
+            PostSafe(() => { if (card is not null) card.ApprovalState = 2; });
             return null; // 取消（框被关）→ 本轮以已累积文本收敛
         }
         var approved = userDecision.Approved;
-        _dispatcher.Post(() =>
+        PostSafe(() =>
         {
             if (card is not null) card.ApprovalState = approved ? 1 : 2;
             turn.Status = TurnStatus.Working;
@@ -294,22 +363,26 @@ public sealed class ChatSessionEngine
     private bool IsPollingTool(string toolName)
         => !string.IsNullOrEmpty(toolName) && PollingToolNames.Contains(toolName);
 
-    /// <summary>确保当前段是目标类型的文本段；否则冻结/移除当前并新开一段。串行在 UI 线程调用。</summary>
+    /// <summary>确保当前段是目标类型的文本段；否则冻结/移除当前并新开一段。串行在 UI 线程调用。
+    /// 2026-10-31 加固：cursor.Current 可能已被收尾移除（晚到回调）——IndexOf 返回 -1 时旧代码
+    /// RemoveAt(-1) 抛 ArgumentOutOfRangeException，UI 线程直接死进程；现退化为末尾追加。</summary>
     private void EnsureTextSegment(StreamCursor cursor, IList<ChatMessageItem> items, string senderName, bool isReasoningContent)
     {
         if (cursor.Current.IsText && cursor.Current.IsReasoningContent == isReasoningContent) return;
         var idx = items.IndexOf(cursor.Current);
+        int insertAt;
         if (cursor.Current.IsText && string.IsNullOrWhiteSpace(cursor.Current.Content))
         {
-            items.RemoveAt(idx); // 空段不留
+            if (idx >= 0) { items.RemoveAt(idx); insertAt = idx; }   // 空段不留（原位换新）
+            else insertAt = items.Count;                             // 晚到回调：段已不在列表 → 末尾
         }
         else
         {
             if (cursor.Current.IsText) cursor.Current.IsStreaming = false; // 冻结非空异类段
-            idx++;
+            insertAt = idx >= 0 ? idx + 1 : items.Count;
         }
         var seg = NewTextSegment(senderName, isReasoningContent);
-        items.Insert(idx, seg);
+        items.Insert(insertAt, seg);
         cursor.Current = seg;
     }
 
@@ -327,14 +400,16 @@ public sealed class ChatSessionEngine
                 items.Remove(stale);
             }
             var idx = items.IndexOf(cursor.Current);
+            int insertAt;
             if (cursor.Current.IsText && string.IsNullOrWhiteSpace(cursor.Current.Content))
             {
-                items.RemoveAt(idx); // 空段不留
+                if (idx >= 0) { items.RemoveAt(idx); insertAt = idx; }   // 空段不留（原位换工具卡）
+                else insertAt = items.Count;                             // 晚到回调防御（同 EnsureTextSegment）
             }
             else
             {
                 if (cursor.Current.IsText) cursor.Current.IsStreaming = false; // 冻结非空段
-                idx++;
+                insertAt = idx >= 0 ? idx + 1 : items.Count;
             }
             var tool = new ChatMessageItem
             {
@@ -345,7 +420,7 @@ public sealed class ChatSessionEngine
                 CallId = ev.CallId,
                 Input = ev.Input,
             };
-            items.Insert(idx, tool);
+            items.Insert(insertAt, tool);
             cursor.Current = tool;
             if (!string.IsNullOrEmpty(ev.CallId)) cursor.PendingTools[ev.CallId] = tool;
 
