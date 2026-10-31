@@ -91,9 +91,9 @@
 - 移动壳（Page 族导航 / 底部 tab / 完整设置页）属 M3——上面「设置页 ❌」就是这条的直接体现；
   其中能力面（技能包/连接器）已通过「模型设置 → 能力」页签在手机可达，外观/布局仍是桌面专属。
 - 手机端文件类工具的实际可用范围以沙箱为界，还没做「用户可见的目录选择器」。
-- **应用审查的判定质量取决于你用的 agent**：页面只发布任务，判定由 agent 做（它搜几次、抓不抓正文都由它决定）。
-  想让判定更硬就让它多抓几页；遇到同名站/落地页的正确处置是落「不确定」，不是硬给一个结论。
-  判定模块本身不在本仓（在 ⑭ `Aether.AppAudit.AI`），所以换判定方/换宿主都不用动这里。
+- **桌面端崩溃防线**（2026-10-31）已做到「managed 异常不杀进程」（见 `DESIGN.md` 崩溃防线一节），
+  但 native 层（Playwright / RoyalTerminal / SQLite）的段错误仍可能死进程——黑匣子日志
+  （`~/.aether/aether-ai-app/logs/app-log.txt`）是唯一现场，再崩先看它。
 
 ## M0 验证清单（2026-10-24 全部通过 ✅）
 
@@ -374,7 +374,7 @@ Chrome/Edge（无则明确报错）。**进程纪律**：附加模式的浏览�
 
 **验收**：⑭ `tests/Aether.Browser.AI.Tests` 13 例（fake service 工具行为，含操作三件套）+ 本仓 `BrowserToolWiringTests` 3 例（桌面注册 7 个、
 等级断言 / 手机连注册都不发生 / 误挂载被宿主能力兜底）+ `BrowserViewModelTests` 5 例（投影/过滤/命令）；
-`--tools` 桌面 27 个含「浏览器（7）」组；**`--browser-smoke` 五断言全过**（常规模式真启动 + cookie 提取链路 + 操作三件套离线 E2E
+`--tools` 桌面 24 个含「浏览器（7）」组（AppAudit 退休后）；**`--browser-smoke` 五断言全过**（常规模式真启动 + cookie 提取链路 + 操作三件套离线 E2E
 （data: URL 页 type→click→read 闭环，不依赖外网）+ **附加模式同套 E2E**（普通启动 + CDP 连入）+ 容器释放关闭
 （含附加模式进程 kill 落地），exit 0），退出后无浏览器/驱动进程残留。
 
@@ -385,7 +385,7 @@ OSC 8331 哨兵捕获 / Unix resize 防抖——踩坑件原样）。**切法（
 `Aether.Terminal.AI`；**UI 耦合的 impl**（`ITerminalService` 持 RoyalTerminal 控件/PTY）在本仓桌面 head `Terminal/`，
 经 `AddTerminalPanel` 一并接线——工具与面板共用同一 service 单例。
 
-**形态**：nav rail 第四个 tab「终端」——多标签集成终端，每会话一个 RoyalTerminal 控件 + **真实登录 shell**（zsh -l，
+**形态**：nav rail 第三个 tab「终端」（AppAudit 页撤除后：聊天 → 浏览器 → 终端 → 设置）——多标签集成终端，每会话一个 RoyalTerminal 控件 + **真实登录 shell**（zsh -l，
 完整 env 含 .zshrc；Windows powershell）。**控件/PTY 归服务所有（2026-10-29 重构，BrowserService 同款）**——视图是
 纯投影（附着=挂载控件、分离=摘下），**视图可随意销毁**不杀会话、重建即原样续看；`run_in_terminal` 无需用户开过终端
 tab（无视图也能建会话跑命令）。关掉最后一个会话自动补新会话（面板恒有活终端）。
@@ -402,7 +402,7 @@ ANSI 剥离 + 头尾截断（6000 字符，失败 tail 优先）；超时/取消
 
 **验收**：⑭ `tests/Aether.Terminal.AI.Tests` 7 例（fake service：会话取用/新建、不等待模式、cd 前缀、结果映射、
 超时口径、长输出截断）+ 本仓 `TerminalToolWiringTests` 3 例（桌面注册 Dangerous/DesktopOnly / 手机连注册都不发生 /
-AddTerminalPanel 工具与服务同单例）；`--tools` 桌面 27 个含「终端（1）」；`--dump-layout` 三档尺寸 × 5 tab 全渲染
+AddTerminalPanel 工具与服务同单例）；`--tools` 桌面 24 个含「终端（1）」；`--dump-layout` 三档尺寸 × 4 tab（聊天/浏览器/终端/设置）全渲染
 （TerminalControl vis=True）且退出**无 zsh 残留**（PTY 清理链实证）；**`--view-recycle-test` 四断言全过**
 （无视图可跑 / 附着续用 / **销毁视图后 PTY 仍活** / 重建视图续看——视图生命周期与 PTY 彻底解耦的端到端实证，
 经 `App.HeadGuiHook` 注入——harness 需要 head 内具体类型）。
@@ -419,12 +419,15 @@ delegate 异常经 `AwaitAndThrowIfFailed` 重抛到线程池 → 未处理异�
 1. **VM 最后防线**（`ChatViewModel`）：`SendInputAsync` 全体包 try/catch——漏网异常收敛为 `[轮次异常：…]`
    可见错误段 + turn 转 Error + 状态栏提示 + 清运行态，**零外逃**；`InitializeAsync` / `ResumeConversationAsync`（历史
    损坏） / `AcceptPlanAsync` / agent 目录热刷新（`SafeFireAndForget`）同批加固。
-2. **引擎层**（`ChatSessionEngine`）：① 所有 fire-and-forget 上屏回调经 `PostSafe`（lambda 吞异常记黑匣子——
-   `Dispatcher.Post` 无观察者，上抛 = UI 线程未处理异常 = 进程死）；② flush 定时器竞态根治——`flusherClosed` 关闸
+2. **引擎层**（`ChatSessionEngine`）：flush 定时器竞态根治——`flusherClosed` 关闸
    （收尾后拒收新 chunk，杜绝 Change-after-Dispose 的 ODE 从流线程杀进程）+ 换表与入队同临界区（时序保序）+
-   收尾改**确定性 drain**（替换原「Change(0)+Delay(60)」窗口 hack）；③ 晚到回调踩已移除段的 `RemoveAt(-1)` 崩溃面
-   堵死（`IndexOf` = -1 时退化末尾追加）；④ 收尾迁移自身失败也清运行态（否则会话永远亮「运行中」）。
-3. **进程级兜底**（`CrashGuard`，App.Core）：`TaskScheduler.UnobservedTaskException` → 记黑匣子 + `SetObserved`
+   收尾改**确定性 drain**（替换原「Change(0)+Delay(60)」窗口 hack）；晚到回调踩已移除段的 `RemoveAt(-1)` 崩溃面
+   堵死（`IndexOf` = -1 时退化末尾追加）；收尾迁移自身失败也清运行态（否则会话永远亮「运行中」）。
+3. **端口契约（机械化）**：`IUiDispatcher.Post` 的实现**必须吞掉 lambda 内异常**（记黑匣子）——
+   `AvaloniaUiDispatcher` 落地，View/桌面切片的零星回调走静态 `UiThread.SafePost`（同契约）。**一切
+   fire-and-forget 上屏回调走端口即自动安全**——防线从「调用点自觉包 try/catch」升级为结构保证，新代码零成本
+   继承；测试 dispatcher 故意不吞（严格模式暴露 bug）。
+4. **进程级兜底**（`CrashGuard`，App.Core）：`TaskScheduler.UnobservedTaskException` → 记黑匣子 + `SetObserved`
    （fire-and-forget Task 漏网异常原本在 finalizer 线程重抛杀进程）；`AppDomain.UnhandledException` → 记黑匣子
    （.NET 上兜不住但留住栈）。**黑匣子落 `<dataDir>/logs/app-log.txt`**（4MB 截断重开）——托管异常在 macOS
    .ips/统一日志里零痕迹（10-30 崩溃实测两者皆空），下次再崩先看这里。桌面 `Program.Main` 第一行装（无头路径也
@@ -434,6 +437,18 @@ delegate 异常经 `AwaitAndThrowIfFailed` 重抛到线程池 → 未处理异�
 SaveConversation 抛 IOException）→ `[轮次异常]` 段 + 状态栏提示；晚到工具回调踩已收尾轮次 → 不抛（旧代码此路径
 `RemoveAt(-1)` → UI 线程死）+ 卡降级追加；黑匣子落盘断言。全套 86 测试 + `--smoke` 通过。同步 Execute 的重抛路径
 无法在测试进程内断言（会真杀进程）——测试断言的是其前置条件：**没有任何异常能逃出命令方法**。
+
+### M2-refactor（2026-10-31）：为功能增长铺路——选择器拆分 + 防线机械化
+
+- **`ChatPickersViewModel` 拆出**：输入卡头部的 agent 目标 + LLM 档案两个下拉自 ChatViewModel 拆出
+  （732 → 589 行）——未来「会话模式切换 / agent 组合 / 档案动作」的独立落点，不再往 ChatViewModel 堆。
+  交互全走事件（`SelectionChanged` / `TargetChanged` / 管理窗意图），恢复会话的程序化设值走 `SetTargetSilent`
+  （不开新会话）；picker 只认 `IAgentCatalog` 端口，agent 存储变更由 ChatViewModel 转发。XAML 绑定
+  `Pickers.*`；`ManageAgentsRequested` / `ManageLlmRequested` 在 ChatViewModel 上是转发事件（宿主/测试不动）。
+- **防线机械化**：`IUiDispatcher.Post` 端口契约化（实现必须吞 lambda 内异常，`AvaloniaUiDispatcher` 落地；
+  View/桌面切片的零星回调走静态 `UiThread.SafePost`）——引擎私有 `PostSafe` 包装移除，**新代码走端口即自动
+  安全**，不再依赖记得包 try/catch。测试 dispatcher 故意不吞（严格模式暴露 bug）。
+- **验收**：全量 86 测试（哨兵弹回/热刷新/恢复/演示/崩溃防线全过）+ `--smoke` + `--tools` 24。
 
 ### 移动端（方案A 实证，2026-10-24）
 
