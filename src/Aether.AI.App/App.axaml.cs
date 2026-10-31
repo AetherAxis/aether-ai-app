@@ -147,12 +147,12 @@ public partial class App : Application
         try
         {
             if (args.Contains("--demo-llm", StringComparer.OrdinalIgnoreCase)
-                && vm.AgentTargetItems.Any(t => t.Id == "assistant"))
+                && vm.Pickers.AgentTargetItems.Any(t => t.Id == "assistant"))
             {
                 // 真模型一轮：流式渲染走真实 LLM（DeepSeek 等）。截图窗 3-15s。
                 await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
                 {
-                    vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "assistant");
+                    vm.Pickers.SelectedAgentTarget = vm.Pickers.AgentTargetItems.First(t => t.Id == "assistant");
                     vm.InputText = "用一句话自我介绍，再说 2+2 等于几。";
                     await vm.SendInputCommand.ExecuteAsync(null);
                 });
@@ -164,7 +164,7 @@ public partial class App : Application
                 // 目标列表 InitializeAsync 已填好。道具文件走临时目录（demo agent = ReadFile/DeleteFile 真链路）。
                 var readFile = Path.Combine(Path.GetTempPath(), "aether-demo-read.txt");
                 await File.WriteAllTextAsync(readFile, "600000");
-                vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "rule-demo");
+                vm.Pickers.SelectedAgentTarget = vm.Pickers.AgentTargetItems.First(t => t.Id == "rule-demo");
                 vm.InputText = $"读{readFile}";
                 await vm.SendInputCommand.ExecuteAsync(null);
             });
@@ -173,13 +173,13 @@ public partial class App : Application
             {
                 var delFile = Path.Combine(Path.GetTempPath(), "aether-demo-delete.txt");
                 await File.WriteAllTextAsync(delFile, "待删除");
-                vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "rule-approve");
+                vm.Pickers.SelectedAgentTarget = vm.Pickers.AgentTargetItems.First(t => t.Id == "rule-approve");
                 vm.InputText = $"删除{delFile}";
                 await vm.SendInputCommand.ExecuteAsync(null);   // → bottom sheet 弹出并挂起等审批
             });
 
             await Task.Delay(8000);   // 窗口期：审批 sheet 开着供截图（模拟器冷启动 + 轮次排队需几秒）
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => MobileApproval?.Complete(
+            UiThread.SafePost(() => MobileApproval?.Complete(
                 new Aether.AI.Core.Agents.ToolApprovalDecision(
                     MobileApproval is { } b && b.HasPending ? b.PendingRequestId! : string.Empty,
                     Approved: true, Reason: "演示批准", AlwaysApprove: false)));
@@ -232,11 +232,11 @@ public partial class App : Application
             while (item is null && DateTimeOffset.UtcNow < findEnd)
             {
                 await Task.Delay(200);
-                item = vm.AgentTargetItems.FirstOrDefault(t => t.Id == "zz-tab-test");
+                item = vm.Pickers.AgentTargetItems.FirstOrDefault(t => t.Id == "zz-tab-test");
             }
             if (item is null) throw new InvalidOperationException("测试 agent 8s 内未进下拉");
 
-            vm.SelectedAgentTarget = item;
+            vm.Pickers.SelectedAgentTarget = item;
             vm.InputText = "跑";
             _ = vm.SendInputCommand.ExecuteAsync(null);   // 火忘：轮次在后台跑，切 tab 与之并发
             await Task.Delay(1000);                       // 轮次进行中（sleep 5）
@@ -486,6 +486,7 @@ public partial class App : Application
         // （10-30：3 工具 + skill 播种）相继撤除。判定的实际能力（WebSearch/FetchUrl 查证据）SystemTools
         // 本来就有，agent 聊天里直接用；历史 app-audit.json 与已种的 SKILL.md 留在数据目录不受影响。 ——
 
+        services.AddSingleton<ChatPickersViewModel>();   // 输入卡头部两个选择器（2026-10-31 自 ChatViewModel 拆出）
         services.AddSingleton<ChatViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AgentsViewModel>();   // agent 管理窗（聊天顶部下拉末项「管理 agent…」进入）

@@ -43,10 +43,10 @@ public class ModelPickerTests : IDisposable
     {
         var (vm, _) = Create();
 
-        var item = Assert.Single(vm.LlmPickerItems);
+        var item = Assert.Single(vm.Pickers.LlmPickerItems);
         Assert.True(item.IsManage);
-        Assert.Null(vm.SelectedLlm);        // 空占位（PlaceholderText = 未配置模型）
-        Assert.False(vm.HasLlmProfiles);
+        Assert.Null(vm.Pickers.SelectedLlm);        // 空占位（PlaceholderText = 未配置模型）
+        Assert.False(vm.Pickers.HasLlmProfiles);
     }
 
     [Fact]
@@ -59,9 +59,9 @@ public class ModelPickerTests : IDisposable
             new LlmConfig("B", null, "sk-b", "m-b"),
         }, "A");
 
-        Assert.Equal(new[] { "A", "B", "管理模型…" }, vm.LlmPickerItems.Select(i => i.Name));
-        Assert.Equal("A", vm.SelectedLlm?.Name);
-        Assert.True(vm.HasLlmProfiles);
+        Assert.Equal(new[] { "A", "B", "管理模型…" }, vm.Pickers.LlmPickerItems.Select(i => i.Name));
+        Assert.Equal("A", vm.Pickers.SelectedLlm?.Name);
+        Assert.True(vm.Pickers.HasLlmProfiles);
     }
 
     [Fact]
@@ -74,11 +74,11 @@ public class ModelPickerTests : IDisposable
             new LlmConfig("B", null, "sk-b", "m-b"),
         }, "A");
 
-        vm.SelectedLlm = vm.LlmPickerItems.First(i => i.Name == "B");
+        vm.Pickers.SelectedLlm = vm.Pickers.LlmPickerItems.First(i => i.Name == "B");
 
         Assert.Equal("B", state.SelectedName);
-        Assert.Equal("B", vm.SelectedLlm?.Name);   // RefreshLlmProfiles 重建后仍指向新选中项
-        Assert.True(vm.LlmPickerItems.First(i => i.Name == "B").IsCurrent);
+        Assert.Equal("B", vm.Pickers.SelectedLlm?.Name);   // RefreshLlmProfiles 重建后仍指向新选中项
+        Assert.True(vm.Pickers.LlmPickerItems.First(i => i.Name == "B").IsCurrent);
     }
 
     [Fact]
@@ -94,11 +94,11 @@ public class ModelPickerTests : IDisposable
         var manageRequests = 0;
         vm.ManageLlmRequested += () => manageRequests++;
 
-        vm.SelectedLlm = vm.LlmPickerItems.First(i => i.IsManage);
+        vm.Pickers.SelectedLlm = vm.Pickers.LlmPickerItems.First(i => i.IsManage);
 
         Assert.Equal(1, manageRequests);          // 宿主据此开配置窗
         Assert.Equal("A", state.SelectedName);    // 哨兵不切换档案
-        Assert.Equal("A", vm.SelectedLlm?.Name);  // 下拉值弹回原档案（不显示「管理模型…」）
+        Assert.Equal("A", vm.Pickers.SelectedLlm?.Name);  // 下拉值弹回原档案（不显示「管理模型…」）
     }
 
     [Fact]
@@ -106,11 +106,11 @@ public class ModelPickerTests : IDisposable
     {
         var (vm, state) = Create();
         state.Save(new[] { new LlmConfig("A", null, "sk-a", "m-a") }, "A");
-        Assert.Equal("A", vm.SelectedLlm?.Name);
+        Assert.Equal("A", vm.Pickers.SelectedLlm?.Name);
 
         state.Save(Array.Empty<LlmConfig>(), null);
 
-        Assert.Single(vm.LlmPickerItems);
-        Assert.Null(vm.SelectedLlm);
+        Assert.Single(vm.Pickers.LlmPickerItems);
+        Assert.Null(vm.Pickers.SelectedLlm);
     }
 }

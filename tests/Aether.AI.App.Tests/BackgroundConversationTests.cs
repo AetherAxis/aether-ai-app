@@ -58,7 +58,7 @@ public class BackgroundConversationTests : IDisposable
         await vm.RefreshAgentTargetsAsync();
 
         // A 会话：发一轮（不 await——背景跑）
-        vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "custom-sleep");
+        vm.Pickers.SelectedAgentTarget = vm.Pickers.AgentTargetItems.First(t => t.Id == "custom-sleep");
         vm.InputText = "跑";
         var runA = vm.SendInputCommand.ExecuteAsync(null);
 

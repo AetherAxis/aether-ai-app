@@ -52,9 +52,9 @@ public partial class ChatView : UserControl
 
     /// <summary>下拉里选中「管理模型…」/「管理 agent…」→ 开对应窗口。
     /// 延到下一帧：先让下拉浮层收起，再弹窗，避免抢焦点。</summary>
-    private void OnManageLlmRequested() => Dispatcher.UIThread.Post(ShowModelSettings);
+    private void OnManageLlmRequested() => UiThread.SafePost(ShowModelSettings);
 
-    private void OnManageAgentsRequested() => Dispatcher.UIThread.Post(ShowAgentManager);
+    private void OnManageAgentsRequested() => UiThread.SafePost(ShowAgentManager);
 
     // —— 模型设置浮层（移动形态）——
 
@@ -159,7 +159,7 @@ public partial class ChatView : UserControl
     private void OnApprovalRequested(ToolApprovalRequest request)
     {
         _pendingRequest = request;
-        Dispatcher.UIThread.Post(() =>
+        UiThread.SafePost(() =>
         {
             ApprovalToolRun.Text = request.ToolName;
             ApprovalInputText.Text = request.Input is { Count: > 0 }
@@ -189,5 +189,5 @@ public partial class ChatView : UserControl
     /// <summary>点击历史会话行后收起下拉。延迟到下一帧再 Hide：Button.OnClick 先 RaiseEvent(Click)
     /// 再 Command.Execute，同步 Hide 会把按钮从视觉树摘掉、打断命令执行。</summary>
     public void OnConversationClicked(object? sender, RoutedEventArgs e)
-        => Dispatcher.UIThread.Post(() => HistoryFlyoutButton.Flyout?.Hide());
+        => UiThread.SafePost(() => HistoryFlyoutButton.Flyout?.Hide());
 }

@@ -46,8 +46,8 @@ public class DeleteSelectedAgentTests : IDisposable
         await vm.InitializeAsync();
         await vm.RefreshAgentTargetsAsync();
 
-        vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "agent-a");
-        Assert.Equal("agent-a", vm.SelectedAgentTarget?.Id);
+        vm.Pickers.SelectedAgentTarget = vm.Pickers.AgentTargetItems.First(t => t.Id == "agent-a");
+        Assert.Equal("agent-a", vm.Pickers.SelectedAgentTarget?.Id);
 
         // 真实删除路径：AgentsViewModel.DeleteAgent（store.Save → Changed → Chat 侧刷新）
         var agentsVm = provider.GetRequiredService<AgentsViewModel>();
@@ -55,12 +55,12 @@ public class DeleteSelectedAgentTests : IDisposable
         agentsVm.DeleteAgentCommand.Execute(rowA);
 
         // 删除后：回落到剩余第一个（不能停在已删除的 agent-a 上）
-        Assert.NotEqual("agent-a", vm.SelectedAgentTarget?.Id);
-        Assert.NotNull(vm.SelectedAgentTarget);
+        Assert.NotEqual("agent-a", vm.Pickers.SelectedAgentTarget?.Id);
+        Assert.NotNull(vm.Pickers.SelectedAgentTarget);
 
         // 显式切到 agent-c：生效（不能怎么切都停在旧值）
-        vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "agent-c");
-        Assert.Equal("agent-c", vm.SelectedAgentTarget?.Id);
+        vm.Pickers.SelectedAgentTarget = vm.Pickers.AgentTargetItems.First(t => t.Id == "agent-c");
+        Assert.Equal("agent-c", vm.Pickers.SelectedAgentTarget?.Id);
         // 切目标 → 新会话（空的）
         Assert.Empty(vm.Messages);
     }

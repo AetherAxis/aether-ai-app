@@ -10,42 +10,25 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Aether.AI.App.ViewModels;
 
-/// <summary>对话目标（下拉项）：catalog AgentDefinition 的展示形态。
-/// **record（值相等，2026-10-29 对齐模型下拉）**——目标池热刷新（Clear+重建）后 ComboBox 按**值**匹配新实例，
-/// 选中无缝保持；class 引用相等的年代重建即失配，是「删/编 agent 后下拉卡旧值」的根因之一。</summary>
-public sealed record AgentTargetItem
-{
-    public string Id { get; init; } = string.Empty;
-    public string Name { get; init; } = string.Empty;
-    public string Description { get; init; } = string.Empty;
-    /// <summary>引擎类型显示图标（✨ LLM / 🧭 规则 / ⌨ 代码）。</summary>
-    public string DisplayIcon { get; init; } = "🧭";
-    /// <summary>是否启用 4 档模式选择器（EnableAgentModeProvider 的 agent 才有）。</summary>
-    public bool EnableAgentModeProvider { get; init; }
-
-    /// <summary>末项哨兵「管理 agent…」：选中它不开新会话，只打开管理窗（与模型下拉同一套交互）。</summary>
-    public bool IsManage { get; init; }
-}
-
 /// <summary>
 /// 聊天页 ViewModel：多会话并发（每会话独立 <see cref="ConversationRuntime"/>，切会话不取消背景 run）+
-/// 目标选择 + 4 档模式 + 计划面板 + 历史增量加载 + 会话侧栏。
+/// 4 档模式 + 计划面板 + 历史增量加载 + 会话侧栏 + 发送主链路。
 /// 自 monorepo ChatWorkspaceViewModel port（2026-10-24）：剥离设备/SignalR 远程链、工作流/规则目标池、
 /// LLM 下拉切换（M2 以设置页回归）；执行核心已下沉 <see cref="ChatSessionEngine"/>
 /// （审批循环经 ⑫ RunInteractiveAsync 收编）。
+/// 2026-10-31 拆出 <see cref="ChatPickersViewModel"/>（agent 目标 + LLM 档案两个下拉——未来输入卡头部
+/// 功能的独立落点），本类经事件接线（SelectionChanged/TargetChanged/管理窗意图），不再持有选择器状态。
 /// </summary>
 public partial class ChatViewModel : ObservableObject
 {
     private readonly IAgentRunner _agentRunner;
     private readonly IUiDispatcher _dispatcher;
     private readonly IConversationStore _conversationStore;
-    private readonly IAgentCatalog _agentCatalog;
     private readonly ChatSessionEngine _engine;
     private readonly ChatTranscriptPersister _persister;
     private readonly ConversationHistoryLoader _historyLoader;
-    private readonly Aether.Workbench.IPreferencesStore _preferences;
-    private readonly LlmConfigState _llmState;
     private readonly CustomAgentStore _agentStore;
+    private readonly ChatPickersViewModel _pickers;
 
     // —— 多会话并发：每会话独立 runtime，背景 run 往自己的 Messages 追加，切会话只换 _current 不取消 ——
     private readonly ConcurrentDictionary<Guid, ConversationRuntime> _runtimes = new();
@@ -53,34 +36,29 @@ public partial class ChatViewModel : ObservableObject
     private Guid _currentConversationId = Guid.Empty;
 
     private bool _isInitializing;
-    private bool _rebuildingTargets; // 目标池热刷新期：SelectedAgentTarget 重设不算「用户切目标」，不重置会话
     private bool _syncingMode; // 程序化刷新 SelectedChatMode 时置 true，避免回触 SetMode
 
     // —— 历史增量加载：切换会话时只渲染最近若干轮，更早的暂存，滚到顶部再加载 ——
     private const int HistoryInitialBatch = 10;
     private const int HistoryLoadBatch = 10;
 
-    public ChatViewModel(
-        IServiceProvider serviceProvider,
-        Aether.Workbench.IPreferencesStore preferences)
+    public ChatViewModel(IServiceProvider serviceProvider)
     {
         _agentRunner = serviceProvider.GetRequiredService<IAgentRunner>();
         _dispatcher = serviceProvider.GetRequiredService<IUiDispatcher>();
         _conversationStore = serviceProvider.GetRequiredService<IConversationStore>();
-        _agentCatalog = serviceProvider.GetRequiredService<IAgentCatalog>();
         _persister = serviceProvider.GetRequiredService<ChatTranscriptPersister>();
         _historyLoader = serviceProvider.GetRequiredService<ConversationHistoryLoader>();
-        _preferences = preferences;
-        _llmState = serviceProvider.GetRequiredService<LlmConfigState>();
         _agentStore = serviceProvider.GetRequiredService<CustomAgentStore>();
+        _pickers = serviceProvider.GetRequiredService<ChatPickersViewModel>();
 
-        // 模型下拉的档案列表：配置窗保存/切换后 Changed 即时刷新（重建式，列表小）。
-        _llmState.Changed += RefreshLlmProfiles;
-        RefreshLlmProfiles();
+        // 选择器 → 本 VM：任何选中变化更新模式支持并重置模式档；用户主动切目标开新会话。
+        _pickers.SelectionChanged += OnPickerSelectionChanged;
+        _pickers.TargetChanged += OnPickerTargetChanged;
 
-        // Agents 页保存/删除自定义 agent → 目标池热刷新（保持在当前 agent 上，不打断会话）。
-        // SafeFireAndForget：事件回调里的漏网异常只记日志，不上抛杀进程。
-        _agentStore.Changed += () => RefreshAgentTargetsAsync().SafeFireAndForget();
+        // Agents 页保存/删除自定义 agent → picker 热刷新目标池（保留选中，不重置会话）。
+        // 转发而非让 picker 直接订阅：picker 只认 IAgentCatalog 端口，谁管存储谁转发。
+        _agentStore.Changed += () => _pickers.OnAgentStoreChanged();
 
         // 流式渲染引擎：审批/计划快照全在引擎内。模式/模式支持逐工具实时读（运行中切档立即生效）；
         // isCurrentRuntime 决定背景会话计划变更是否上抛 PlanSummary。
@@ -105,8 +83,7 @@ public partial class ChatViewModel : ObservableObject
         _isInitializing = true;
         try
         {
-            var saved = await _preferences.GetAsync("chat.selectedAgent");
-            await LoadAgentTargetsAsync(saved);
+            await _pickers.InitializeAsync();
             await RefreshConversationsAsync();
         }
         catch (Exception ex)
@@ -119,61 +96,20 @@ public partial class ChatViewModel : ObservableObject
     }
 
     /// <summary>Agents 保存/删除自定义 agent 后热刷新目标池：保留当前选中（按 Id），不重置会话。</summary>
-    public Task RefreshAgentTargetsAsync() => LoadAgentTargetsAsync(SelectedAgentTarget?.Id);
+    public Task RefreshAgentTargetsAsync() => _pickers.RefreshAsync();
 
-    /// <summary>末项哨兵「管理 agent…」被选中 → 宿主（ChatView）打开 agent 管理窗口。</summary>
-    public event Action? ManageAgentsRequested;
+    /// <summary>输入卡头部的两个选择器（agent 目标 + LLM 档案）——XAML 绑定 <c>Pickers.*</c>。</summary>
+    public ChatPickersViewModel Pickers => _pickers;
+
+    /// <summary>末项哨兵「管理 agent…」被选中 → 宿主（ChatView）打开 agent 管理窗口。（转发自 picker。）</summary>
+    public event Action? ManageAgentsRequested
+    {
+        add => _pickers.ManageAgentsRequested += value;
+        remove => _pickers.ManageAgentsRequested -= value;
+    }
 
     /// <summary>哨兵 Id（不进偏好、不参与会话映射）。</summary>
     public const string ManageAgentsId = "__manage_agents__";
-
-    private async Task LoadAgentTargetsAsync(string? preferId)
-    {
-        var defs = await _agentCatalog.GetAllAsync();   // 目录每次枚举求值——新 agent 立刻可见
-        await _dispatcher.InvokeAsync(() =>
-        {
-            _rebuildingTargets = true;
-            try
-            {
-                AgentTargetItems.Clear();
-                foreach (var d in defs)
-                    AgentTargetItems.Add(ToTargetItem(d));
-                // 末项：管理入口（与模型下拉的「管理模型…」同一套交互）
-                AgentTargetItems.Add(new AgentTargetItem
-                {
-                    Id = ManageAgentsId,
-                    Name = "管理 agent…",
-                    Description = "新建 / 编辑自定义 agent（LLM 或规则大脑）",
-                    DisplayIcon = "⚙",
-                    IsManage = true,
-                });
-                // 优先恢复原选中；否则落第一个真实 agent。全删光时 restore 为 null → 清空选中
-                // （输入卡会给「还没有 agent」的提示，而不是停在一个已不存在的 agent 上）。
-                var restore = AgentTargetItems.FirstOrDefault(t => t.Id == preferId)
-                              ?? AgentTargetItems.FirstOrDefault(t => !t.IsManage);
-                _lastAgentId = restore?.Id;
-                SelectedAgentTarget = restore;
-            }
-            finally { _rebuildingTargets = false; }
-        });
-    }
-
-    private static AgentTargetItem ToTargetItem(AgentDefinition d) => new()
-    {
-        Id = d.Id,
-        Name = string.IsNullOrWhiteSpace(d.Name) ? d.Id : d.Name,
-        // 优先用定义里的「给人看的摘要」；没写才退回提示词前 60 字（规则 agent 提示词为空 → 用规则名兜底）。
-        Description = !string.IsNullOrWhiteSpace(d.Description)
-            ? d.Description
-            : d.Instructions.Length > 60 ? d.Instructions[..60] + "…" : d.Instructions,
-        DisplayIcon = d.Engine switch
-        {
-            EngineKind.Llm => "✨",
-            EngineKind.Code => "⌨",
-            _ => "🧭",
-        },
-        EnableAgentModeProvider = d.EnableAgentModeProvider,
-    };
 
     // —— 会话切换与代理属性（镜像 monorepo 语义） ——
 
@@ -287,49 +223,23 @@ public partial class ChatViewModel : ObservableObject
     /// <summary>有计划、非运行中、且不在待接受态 → 可点「确认执行完毕」收起面板。</summary>
     public bool ShowPlanDismiss => HasActivePlan && !IsAgentRunning && !PlanAwaitingAccept;
 
-    // —— 目标选择 ——
+    // —— picker 事件 → 本 VM 的会话/模式语义 ——
 
-    public ObservableCollection<AgentTargetItem> AgentTargetItems { get; } = new();
-
-    private string? _lastAgentId;    // 最后一个「真实」agent Id（哨兵不计入，选中哨兵后弹回它）
-
-    private AgentTargetItem? _selectedAgentTarget;
-
-    /// <summary>选中的聊天目标（手写 setter，**与 <see cref="SelectedLlm"/> 同一套机制**——2026-10-29 对齐）：
-    /// 末项哨兵「管理 agent…」→ **双通知弹回**原 agent（先置 null 终结 ComboBox 的选中提交批次、再回原值；
-    /// 生成 setter 的单次写回会被提交链吞、卡在哨兵上）+ 请宿主开管理窗（不开新会话、不改模式）。
-    /// 正常分支：更新模式支持；非启动期统一开新会话 + 持久化选中。</summary>
-    public AgentTargetItem? SelectedAgentTarget
+    private void OnPickerSelectionChanged()
     {
-        get => _selectedAgentTarget;
-        set
-        {
-            if (ReferenceEquals(_selectedAgentTarget, value)) return;
-            if (value is { IsManage: true })
-            {
-                _selectedAgentTarget = null;
-                OnPropertyChanged(nameof(SelectedAgentTarget));
-                _selectedAgentTarget = AgentTargetItems.FirstOrDefault(t => t.Id == _lastAgentId);
-                OnPropertyChanged(nameof(SelectedAgentTarget));
-                HasModeSupport = _selectedAgentTarget?.EnableAgentModeProvider == true;
-                ManageAgentsRequested?.Invoke();
-                return;
-            }
-            _selectedAgentTarget = value;
-            OnPropertyChanged(nameof(SelectedAgentTarget));
-            if (!_rebuildingTargets && value is not null) _lastAgentId = value.Id;
-            HasModeSupport = value?.EnableAgentModeProvider == true;
-            _syncingMode = true;
-            SelectedChatMode = ChatMode.AutoEdit;
-            _syncingMode = false;
-            if (_isInitializing || _rebuildingTargets || value is null) return;
+        // 任何选中变化（用户切换/热刷新重建/静默恢复）：更新模式支持 + 重置模式档（_syncingMode 防回触 SetMode）。
+        HasModeSupport = _pickers.SelectedAgentTarget?.EnableAgentModeProvider == true;
+        _syncingMode = true;
+        SelectedChatMode = ChatMode.AutoEdit;
+        _syncingMode = false;
+    }
 
-            // 用户主动切换目标 → 开新会话（会话已持久化，误切可从历史找回）。切会话不取消背景 run。
-            SetCurrentInternal(new ConversationRuntime(Guid.Empty));
-            foreach (var c in Conversations) c.IsCurrent = false;
-            _preferences.SetAsync("chat.selectedAgent", value.Id).SafeFireAndForget();
-            RefreshModeAsync().SafeFireAndForget();
-        }
+    private void OnPickerTargetChanged()
+    {
+        // 用户主动切换目标 → 开新会话（会话已持久化，误切可从历史找回）。切会话不取消背景 run。
+        SetCurrentInternal(new ConversationRuntime(Guid.Empty));
+        foreach (var c in Conversations) c.IsCurrent = false;
+        RefreshModeAsync().SafeFireAndForget();
     }
 
     // —— 最近会话列表（侧栏） ——
@@ -338,56 +248,11 @@ public partial class ChatViewModel : ObservableObject
 
     [ObservableProperty] private bool _hasConversations;
 
-    // —— 模型选择器（输入卡上方）：**选择与配置在同一处** ——
-    // 下拉列出全部 LLM 档案（选中即切换，下一轮生效），末项「管理模型…」打开配置窗（LlmProfilesView）。
-    // 2026-10-26 四改：原「每条档案一个 chip + 独立的『模型 ⚙』按钮」两个控件合并成这一个下拉。
-
-    public ObservableCollection<LlmProfileChip> LlmPickerItems { get; } = new();
-
-    private LlmProfileChip? _selectedLlm;
-    public LlmProfileChip? SelectedLlm
+    /// <summary>「管理模型…」被选中 → 宿主（ChatView）打开配置窗/浮层。（转发自 picker。）</summary>
+    public event Action? ManageLlmRequested
     {
-        get => _selectedLlm;
-        set
-        {
-            if (ReferenceEquals(_selectedLlm, value)) return;
-            if (value is { IsManage: true })
-            {
-                // 哨兵项不参与选择：把值弹回原档案（下拉里不显示「管理模型…」），再请宿主开配置窗。
-                _selectedLlm = null;
-                OnPropertyChanged(nameof(SelectedLlm));
-                _selectedLlm = LlmPickerItems.FirstOrDefault(i => i.IsCurrent);
-                OnPropertyChanged(nameof(SelectedLlm));
-                ManageLlmRequested?.Invoke();
-                return;
-            }
-            _selectedLlm = value;
-            OnPropertyChanged(nameof(SelectedLlm));
-            if (value is not null && value.Name != _llmState.SelectedName)
-            {
-                _llmState.Select(value.Name);
-                // 换档案对「跟随当前档案」的 agent 都生效（通用助手 / 用户自建 LLM agent）：
-                // 逐个失效，下一轮对话即用新模型（与配置窗同一条路）。哨兵项不参与。
-                foreach (var item in AgentTargetItems.Where(t => !t.IsManage))
-                    _agentRunner.Invalidate(item.Id);
-            }
-        }
-    }
-
-    /// <summary>「管理模型…」被选中 → 宿主（ChatView）打开配置窗/浮层。</summary>
-    public event Action? ManageLlmRequested;
-
-    public bool HasLlmProfiles => _llmState.Configs.Count > 0;
-
-    private void RefreshLlmProfiles()
-    {
-        LlmPickerItems.Clear();
-        foreach (var c in _llmState.Configs)
-            LlmPickerItems.Add(new LlmProfileChip(c.Name, c.ModelId, c.Name == _llmState.SelectedName));
-        LlmPickerItems.Add(LlmProfileChip.Manage);
-        _selectedLlm = LlmPickerItems.FirstOrDefault(i => i.IsCurrent);
-        OnPropertyChanged(nameof(SelectedLlm));
-        OnPropertyChanged(nameof(HasLlmProfiles));
+        add => _pickers.ManageLlmRequested += value;
+        remove => _pickers.ManageLlmRequested -= value;
     }
 
     [RelayCommand]
@@ -407,10 +272,9 @@ public partial class ChatViewModel : ObservableObject
         SetCurrentInternal(runtime);
         foreach (var c in Conversations) c.IsCurrent = c.Id == item.Id;
 
-        _isInitializing = true;
-        if (AgentTargetItems.FirstOrDefault(t => t.Id == item.AgentId) is { } target)
-            SelectedAgentTarget = target; // 启动期语义：不重置会话
-        _isInitializing = false;
+        // 静默恢复目标选中（不开新会话）；历史会话的 AgentId 已随侧栏项带出。
+        if (_pickers.AgentTargetItems.FirstOrDefault(t => t.Id == item.AgentId) is { } target)
+            _pickers.SetTargetSilent(target);
 
         // 首次切来（runtime 空）→ 从 typed 事件流重建 transcript；已加载过 → 直接显（背景 run 可能还在追加）。
         if (!alreadyLoaded && !runtime.IsLoadingHistory)
@@ -583,13 +447,13 @@ public partial class ChatViewModel : ObservableObject
         if (!CanSendInput || string.IsNullOrWhiteSpace(InputText)) return;
         if (IsAgentRunning) return; // 防重入兜底
         // agent 全被删光时（目录里只剩「管理 agent…」）给一条能自救的提示。
-        if (SelectedAgentTarget is null)
+        if (_pickers.SelectedAgentTarget is null)
         {
             StatusText = "还没有 agent——在顶部下拉的「管理 agent…」里新建一个";
             return;
         }
 
-        var target = SelectedAgentTarget;
+        var target = _pickers.SelectedAgentTarget!;
         var content = InputText.Trim();
         InputText = string.Empty;
         var runtime = _current;
@@ -722,11 +586,4 @@ public partial class ChatViewModel : ObservableObject
         pending.RemoveRange(start, take);
         return take;
     }
-}
-
-/// <summary>模型下拉的一项（输入卡上方的模型选择器）——重建式刷新（列表小，无需逐项 INPC）。
-/// <paramref name="IsManage"/> = 末项哨兵「管理模型…」：选中它不开档案切换，只打开配置窗。</summary>
-public sealed record LlmProfileChip(string Name, string ModelId, bool IsCurrent, bool IsManage = false)
-{
-    public static readonly LlmProfileChip Manage = new("管理模型…", string.Empty, IsCurrent: false, IsManage: true);
 }

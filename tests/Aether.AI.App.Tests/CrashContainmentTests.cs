@@ -115,7 +115,7 @@ public class CrashContainmentTests : IDisposable
     }
 
     private static AgentTargetItem Target(ChatViewModel vm, string id)
-        => vm.AgentTargetItems.First(t => t.Id == id);
+        => vm.Pickers.AgentTargetItems.First(t => t.Id == id);
 
     /// <summary>runner 在 run 中途抛异常：引擎层吞掉 → 轮次以 [运行失败] 收敛（Error 态），命令零外逃。</summary>
     [Fact]
@@ -123,7 +123,7 @@ public class CrashContainmentTests : IDisposable
     {
         var vm = await CreateChatAsync(_dataDir, services =>
             services.AddSingleton<IAgentRunner>(new ThrowingRunner()));
-        vm.SelectedAgentTarget = Target(vm, "rule-demo");   // 只当目标用（runner 已被换成炸的）
+        vm.Pickers.SelectedAgentTarget = Target(vm, "rule-demo");   // 只当目标用（runner 已被换成炸的）
         vm.InputText = "随便跑点什么";
 
         var ex = await Record.ExceptionAsync(() => vm.SendInputCommand.ExecuteAsync(null));
@@ -147,7 +147,7 @@ public class CrashContainmentTests : IDisposable
 
         var vm = await CreateChatAsync(_dataDir, services =>
             services.AddSingleton<IConversationStore>(new ThrowingSaveStore(realStore)));
-        vm.SelectedAgentTarget = Target(vm, "rule-demo");
+        vm.Pickers.SelectedAgentTarget = Target(vm, "rule-demo");
         vm.InputText = "读一个不存在的文件";
 
         var ex = await Record.ExceptionAsync(() => vm.SendInputCommand.ExecuteAsync(null));

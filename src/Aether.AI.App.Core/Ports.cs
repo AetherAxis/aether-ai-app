@@ -8,10 +8,14 @@ namespace Aether.AI.App.Core;
 /// </summary>
 public interface IUiDispatcher
 {
-    /// <summary>在 UI 线程执行并等待完成。</summary>
+    /// <summary>在 UI 线程执行并等待完成。lambda 内异常随返回的 Task 流向 await 方（由调用方处理；
+    /// 被丢弃的 faulted task 由 <see cref="CrashGuard"/> 的 UnobservedTaskException 兜底）。</summary>
     Task InvokeAsync(Action action);
 
-    /// <summary>把动作投递到 UI 线程异步执行（fire-and-forget，不等待）。</summary>
+    /// <summary>把动作投递到 UI 线程异步执行（fire-and-forget，不等待）。
+    /// <para>**契约（2026-10-31 防线机械化）：实现必须吞掉 lambda 内异常**（记日志即可，不上抛）——
+    /// Post 没有观察者，异常上抛 = UI 线程未处理异常 = 整个进程崩溃。调用方因此**无需**（也不应）
+    /// 自己包 try/catch：走端口即自动安全。测试实现可以故意不吞（严格模式暴露 bug）。</para></summary>
     void Post(Action action);
 }
 

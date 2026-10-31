@@ -207,10 +207,10 @@ public class CustomAgentTests : IDisposable
             compilation.LoadErrors.GetValueOrDefault("custom-code"));
 
         await vm.RefreshAgentTargetsAsync();
-        var target = vm.AgentTargetItems.First(t => t.Id == "custom-code");
+        var target = vm.Pickers.AgentTargetItems.First(t => t.Id == "custom-code");
         Assert.Equal("⌨", target.DisplayIcon);                   // 代码大脑图标
 
-        vm.SelectedAgentTarget = target;
+        vm.Pickers.SelectedAgentTarget = target;
         vm.InputText = fixture;                                  // 用户消息 = 文件路径，brain 里当 filePath 用
         await vm.SendInputCommand.ExecuteAsync(null);
 
@@ -261,13 +261,13 @@ public class CustomAgentTests : IDisposable
         Assert.Equal("通用助手", seeded.Name);
         Assert.Equal(CustomAgentKind.Llm, seeded.Kind);
 
-        var target = vm.AgentTargetItems.First(t => t.Id == "assistant");
+        var target = vm.Pickers.AgentTargetItems.First(t => t.Id == "assistant");
         Assert.Equal("✨", target.DisplayIcon);
 
         // 改：和自建 agent 走同一条 Save 通道（这里直接改提示词 + 改名）
         store.Save(new[] { seeded with { Name = "我的助手", Instructions = "只回答一个字。" } });
         await vm.RefreshAgentTargetsAsync();
-        Assert.Equal("我的助手", vm.AgentTargetItems.First(t => t.Id == "assistant").Name);
+        Assert.Equal("我的助手", vm.Pickers.AgentTargetItems.First(t => t.Id == "assistant").Name);
 
         var def = Assert.Single(await catalog.GetAllAsync(), a => a.Id == "assistant");
         Assert.Equal("只回答一个字。", def.Instructions);
@@ -277,8 +277,8 @@ public class CustomAgentTests : IDisposable
         store.Save(Array.Empty<CustomAgent>());
         Assert.Empty(await catalog.GetAllAsync());
         await vm.RefreshAgentTargetsAsync();
-        Assert.Null(vm.SelectedAgentTarget);              // 没 agent 了 → 输入卡提示去「管理 agent…」
-        Assert.Single(vm.AgentTargetItems, t => t.IsManage);   // 下拉只剩哨兵（与模型下拉同构）
+        Assert.Null(vm.Pickers.SelectedAgentTarget);              // 没 agent 了 → 输入卡提示去「管理 agent…」
+        Assert.Single(vm.Pickers.AgentTargetItems, t => t.IsManage);   // 下拉只剩哨兵（与模型下拉同构）
     }
 
     [Theory]
@@ -322,13 +322,13 @@ public class CustomAgentTests : IDisposable
         Assert.Equal("把指定路径的文件读回来", def.Description);
 
         await vm.RefreshAgentTargetsAsync();             // 渲染层热刷新（Changed 也已触发，这里显式等一次）
-        var target = vm.AgentTargetItems.First(t => t.Id == "custom-echo");
+        var target = vm.Pickers.AgentTargetItems.First(t => t.Id == "custom-echo");
         Assert.Equal("🧭", target.DisplayIcon);           // 规则大脑图标
 
         var fixture = Path.Combine(_dataDir, "rule-fixture.txt");
         await File.WriteAllTextAsync(fixture, "600000");
 
-        vm.SelectedAgentTarget = target;
+        vm.Pickers.SelectedAgentTarget = target;
         vm.InputText = $"读{fixture}";
         await vm.SendInputCommand.ExecuteAsync(null);
 
@@ -353,22 +353,22 @@ public class CustomAgentTests : IDisposable
 
         var fixture = Path.Combine(_dataDir, "manage-fixture.txt");
         await File.WriteAllTextAsync(fixture, "x");
-        vm.SelectedAgentTarget = vm.AgentTargetItems.First(t => t.Id == "rule-demo");
+        vm.Pickers.SelectedAgentTarget = vm.Pickers.AgentTargetItems.First(t => t.Id == "rule-demo");
         vm.InputText = $"读{fixture}";
         await vm.SendInputCommand.ExecuteAsync(null);
 
-        var manage = Assert.Single(vm.AgentTargetItems, t => t.IsManage);
-        Assert.Same(vm.AgentTargetItems[^1], manage);            // 永远是末项
-        var before = vm.SelectedAgentTarget;
+        var manage = Assert.Single(vm.Pickers.AgentTargetItems, t => t.IsManage);
+        Assert.Same(vm.Pickers.AgentTargetItems[^1], manage);            // 永远是末项
+        var before = vm.Pickers.SelectedAgentTarget;
         var conversation = Assert.Single(vm.Conversations);
 
         var requests = 0;
         vm.ManageAgentsRequested += () => requests++;
 
-        vm.SelectedAgentTarget = manage;
+        vm.Pickers.SelectedAgentTarget = manage;
 
         Assert.Equal(1, requests);                              // 宿主据此开管理窗
-        Assert.Equal(before!.Id, vm.SelectedAgentTarget?.Id);   // 弹回原 agent，不停在「管理 agent…」
+        Assert.Equal(before!.Id, vm.Pickers.SelectedAgentTarget?.Id);   // 弹回原 agent，不停在「管理 agent…」
         Assert.Same(conversation, Assert.Single(vm.Conversations));
         Assert.True(conversation.IsCurrent);                    // 没开新会话
     }
@@ -385,12 +385,12 @@ public class CustomAgentTests : IDisposable
 
         store.Save(new[] { RuleAgent() });
         await vm.RefreshAgentTargetsAsync();
-        Assert.Contains(vm.AgentTargetItems, t => t.Id == "custom-echo");
+        Assert.Contains(vm.Pickers.AgentTargetItems, t => t.Id == "custom-echo");
 
         store.Save(Array.Empty<CustomAgent>());
 
         Assert.DoesNotContain(await catalog.GetAllAsync(), a => a.Id == "custom-echo");
         await vm.RefreshAgentTargetsAsync();
-        Assert.DoesNotContain(vm.AgentTargetItems, t => t.Id == "custom-echo");
+        Assert.DoesNotContain(vm.Pickers.AgentTargetItems, t => t.Id == "custom-echo");
     }
 }

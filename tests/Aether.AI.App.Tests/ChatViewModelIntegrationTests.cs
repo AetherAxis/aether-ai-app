@@ -60,7 +60,7 @@ public class ChatViewModelIntegrationTests : IDisposable
     }
 
     private static AgentTargetItem Target(ChatViewModel vm, string id)
-        => vm.AgentTargetItems.First(t => t.Id == id);
+        => vm.Pickers.AgentTargetItems.First(t => t.Id == id);
 
     private static async Task SendAsync(ChatViewModel vm, string message)
     {
@@ -81,10 +81,10 @@ public class ChatViewModelIntegrationTests : IDisposable
     public async Task Rule_demo_roundtrip_persists_and_renders_tool_card()
     {
         var vm = await CreateChatAsync(_dataDir, new AutoApproveDialog());
-        Assert.Contains(vm.AgentTargetItems, t => t.Id == "rule-demo");
+        Assert.Contains(vm.Pickers.AgentTargetItems, t => t.Id == "rule-demo");
 
         var message = $"读{Fixture("roundtrip", "600000")}";
-        vm.SelectedAgentTarget = Target(vm, "rule-demo");   // 用户切换 → 开新会话
+        vm.Pickers.SelectedAgentTarget = Target(vm, "rule-demo");   // 用户切换 → 开新会话
         await SendAsync(vm, message);
 
         Assert.False(vm.IsAgentRunning);                    // 轮次收敛
@@ -115,7 +115,7 @@ public class ChatViewModelIntegrationTests : IDisposable
     {
         var vm = await CreateChatAsync(_dataDir, new AutoApproveDialog());
         var target = Fixture("approve", "待删");
-        vm.SelectedAgentTarget = Target(vm, "rule-approve");
+        vm.Pickers.SelectedAgentTarget = Target(vm, "rule-approve");
         await SendAsync(vm, $"删除{target}");
 
         var turn = Assert.Single(vm.Messages);
@@ -139,7 +139,7 @@ public class ChatViewModelIntegrationTests : IDisposable
     {
         var vm = await CreateChatAsync(_dataDir, new CancelDialog());
         var target = Fixture("cancel", "保留我");
-        vm.SelectedAgentTarget = Target(vm, "rule-approve");
+        vm.Pickers.SelectedAgentTarget = Target(vm, "rule-approve");
         await SendAsync(vm, $"删除{target}");
 
         var turn = Assert.Single(vm.Messages);
@@ -158,7 +158,7 @@ public class ChatViewModelIntegrationTests : IDisposable
         // 第一进程：跑一轮并持久化。
         var message = $"读{Fixture("restart", "600000")}";
         var vm1 = await CreateChatAsync(_dataDir, new AutoApproveDialog());
-        vm1.SelectedAgentTarget = Target(vm1, "rule-demo");
+        vm1.Pickers.SelectedAgentTarget = Target(vm1, "rule-demo");
         await SendAsync(vm1, message);
         Assert.Single(vm1.Conversations);
 
@@ -185,11 +185,11 @@ public class ChatViewModelIntegrationTests : IDisposable
     public async Task Switching_target_starts_new_chat_and_resume_restores()
     {
         var vm = await CreateChatAsync(_dataDir, new AutoApproveDialog());
-        vm.SelectedAgentTarget = Target(vm, "rule-demo");
+        vm.Pickers.SelectedAgentTarget = Target(vm, "rule-demo");
         await SendAsync(vm, "查600000");
         var firstConversation = Assert.Single(vm.Conversations);
 
-        vm.SelectedAgentTarget = Target(vm, "rule-approve");   // 切目标 → 新会话
+        vm.Pickers.SelectedAgentTarget = Target(vm, "rule-approve");   // 切目标 → 新会话
         Assert.Empty(vm.Messages);
 
         await vm.ResumeConversationCommand.ExecuteAsync(firstConversation);   // 切回

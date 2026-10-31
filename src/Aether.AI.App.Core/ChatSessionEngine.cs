@@ -96,6 +96,8 @@ public sealed class ChatSessionEngine
         // fullText 不再上屏），杜绝 Change-after-Dispose 的 ODE 从流线程杀进程；② 换表与入队都在
         // pendingLock 临界区内（换表顺序 == 上屏顺序，杜绝在飞 flush 与最终 drain 的乱序/丢段）；
         // ③ 定时器回调整段吞异常（Timer 线程的未处理异常同样等于进程死）。
+        // 上屏回调的「吞异常」已机械化进 IUiDispatcher.Post 端口契约（同日）——引擎直接 Post 即安全，
+        // 测试 dispatcher 保持严格模式（不吞）以暴露 bug。
         var pendingChunks = new List<(string Text, bool IsReasoning)>();
         var pendingLock = new object();
         var flusherClosed = false;
@@ -108,7 +110,7 @@ public sealed class ChatSessionEngine
                     if (pendingChunks.Count == 0) return;
                     var snapshot = pendingChunks;      // 整表换出：drain 原子，流式线程继续往新表 append 不互斥
                     pendingChunks = new List<(string, bool)>();
-                    PostSafe(() => ApplyChunks(cursor, items, senderName, snapshot));
+                    _dispatcher.Post(() => ApplyChunks(cursor, items, senderName, snapshot));
                 }
             }
             catch (Exception ex) { CrashGuard.Log("ChatSessionEngine.FlushTimer", ex); }
@@ -147,7 +149,7 @@ public sealed class ChatSessionEngine
                 // todos_* 调用由 OnTodoList 渲染为计划卡，不重复出工具卡。
                 if (ev.Name.StartsWith("todo", StringComparison.OrdinalIgnoreCase))
                     return Task.CompletedTask;
-                PostSafe(() => HandleToolEventSegmented(cursor, items, ev, senderName));
+                _dispatcher.Post(() => HandleToolEventSegmented(cursor, items, ev, senderName));
                 return Task.CompletedTask;
             },
             OnApprovalRequest: (req, _) =>
@@ -169,7 +171,7 @@ public sealed class ChatSessionEngine
                     ApprovalState = 0,
                 };
                 approvalCard = card;
-                PostSafe(() =>
+                _dispatcher.Post(() =>
                 {
                     var idx = items.IndexOf(cursor.Current);
                     if (idx < 0) idx = items.Count - 1;
@@ -181,19 +183,19 @@ public sealed class ChatSessionEngine
             },
             OnTodoList: (list, _) =>
             {
-                PostSafe(() => HandleTodoList(runtime, items, list, senderName));
+                _dispatcher.Post(() => HandleTodoList(runtime, items, list, senderName));
                 return Task.CompletedTask;
             },
             OnError: (text, _) =>
             {
-                PostSafe(() =>
+                _dispatcher.Post(() =>
                 {
                     EnsureTextSegment(cursor, items, senderName, isReasoningContent: false);
                     cursor.Current.Content += $"\n\n[错误：{text}]";
                 });
                 return Task.CompletedTask;
             },
-            OnUsage: info => PostSafe(() => runtime.TokenInfo = info));
+            OnUsage: info => _dispatcher.Post(() => runtime.TokenInfo = info));
 
         // 审批决定获取器（⑫ RunInteractiveAsync 的 resolver 缝）：
         // 自动批策略 → 立即决定；用户审批 → 模态对话框；取消 → null（本轮以已累积文本收敛）。
@@ -279,15 +281,6 @@ public sealed class ChatSessionEngine
         return items.ToList();
     }
 
-    /// <summary>UI 线程 fire-and-forget 回调统一包装：lambda 内异常记黑匣子、不再上抛。
-    /// <see cref="IUiDispatcher.Post"/> 无观察者——上抛 = UI 线程未处理异常 = 整个进程崩溃
-    /// （2026-10-31「对话运行中崩 app」防线的一环）。</summary>
-    private void PostSafe(Action action) => _dispatcher.Post(() =>
-    {
-        try { action(); }
-        catch (Exception ex) { CrashGuard.Log("ChatSessionEngine.UI", ex); }
-    });
-
     /// <summary><see cref="ApplyChunks"/> 的吞异常包装（flush / 最终 drain 都走这里）。</summary>
     private void SafeApplyChunks(StreamCursor cursor, IList<ChatMessageItem> items, string senderName,
         List<(string Text, bool IsReasoning)> snapshot)
@@ -329,11 +322,11 @@ public sealed class ChatSessionEngine
         var userDecision = _approvalDialog is null ? null : await _approvalDialog.ShowAsync(req).ConfigureAwait(false);
         if (userDecision is null)
         {
-            PostSafe(() => { if (card is not null) card.ApprovalState = 2; });
+            _dispatcher.Post(() => { if (card is not null) card.ApprovalState = 2; });
             return null; // 取消（框被关）→ 本轮以已累积文本收敛
         }
         var approved = userDecision.Approved;
-        PostSafe(() =>
+        _dispatcher.Post(() =>
         {
             if (card is not null) card.ApprovalState = approved ? 1 : 2;
             turn.Status = TurnStatus.Working;

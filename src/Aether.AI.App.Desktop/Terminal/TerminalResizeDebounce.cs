@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Aether.AI.App;
 using Avalonia.Threading;
 using RoyalTerminal.Terminal;
 using RoyalTerminal.Terminal.Services;
@@ -104,7 +105,7 @@ internal static class TerminalResizeDebounce
 
         public void Schedule(Action commit)
         {
-            Dispatcher.UIThread.Post(() =>
+            UiThread.SafePost(() =>
             {
                 lock (_lock)
                 {

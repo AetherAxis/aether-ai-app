@@ -161,8 +161,8 @@
                      **与模型下拉同一套交互**（2026-10-29 对齐）：末项哨兵「管理 agent…」开管理窗，
                      VM 双通知弹回原 agent（见 SelectedAgentTarget）；item 是 record（值相等），热刷新不卡选中。 -->
                 <Border Classes="picker" Margin="0,0,8,0">
-                  <ComboBox x:Name="AgentPicker" Classes="compact" ItemsSource="{Binding AgentTargetItems}"
-                            SelectedItem="{Binding SelectedAgentTarget}"
+                  <ComboBox x:Name="AgentPicker" Classes="compact" ItemsSource="{Binding Pickers.AgentTargetItems}"
+                            SelectedItem="{Binding Pickers.SelectedAgentTarget}"
                             Padding="8,4" FontSize="11" MinWidth="96" PlaceholderText="选择助手"
                             ToolTip.Tip="选择助手（末项「管理 agent…」打开管理窗）">
                     <ComboBox.SelectionBoxItemTemplate>
@@ -230,8 +230,8 @@
                   <Border Classes="picker">
                     <ComboBox x:Name="ModelPicker" Classes="compact" MinWidth="110"
                               Padding="8,4" FontSize="11"
-                              ItemsSource="{Binding LlmPickerItems}"
-                              SelectedItem="{Binding SelectedLlm}"
+                              ItemsSource="{Binding Pickers.LlmPickerItems}"
+                              SelectedItem="{Binding Pickers.SelectedLlm}"
                               PlaceholderText="未配置模型"
                               ToolTip.Tip="选档案即切换模型（下一轮对话生效）；末项「管理模型…」打开配置">
                       <ComboBox.SelectionBoxItemTemplate>
