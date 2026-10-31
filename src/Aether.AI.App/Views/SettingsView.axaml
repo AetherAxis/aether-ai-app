@@ -61,6 +61,27 @@
             </Button>
           </StackPanel>
         </Border>
+        <!-- ═══ 任务堂（⑱ 终端凭证：设备号 + secret → 测试连接 → 写入 MCP 连接器）═══ -->
+        <Border Classes="msg-card" Padding="20,18" CornerRadius="14" IsVisible="{Binding TaskHall}">
+          <StackPanel Spacing="14">
+            <StackPanel Spacing="3">
+              <TextBlock Text="任务堂" FontSize="14" FontWeight="SemiBold"/>
+              <TextBlock Text="在任务堂 web 端「设备」页创建设备号（secret 只显示一次），粘到这里。写入连接器后重启 app，任务工具（task_list / task_claim / task_submit / task_detail）自动进池。"
+                         FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+            </StackPanel>
+            <TextBox Text="{Binding TaskHall.Url}" Watermark="服务地址（https://taskhall.example.com）"/>
+            <TextBox Text="{Binding TaskHall.DeviceNumber}" Watermark="设备号（D-XXXXXXXX，可选——仅显示对照）"/>
+            <TextBox Text="{Binding TaskHall.Secret}" Watermark="设备 secret"/>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Classes="outline" Padding="10,6" Command="{Binding TaskHall.SaveCommand}" Content="保存"/>
+              <Button Classes="outline" Padding="10,6" Command="{Binding TaskHall.TestConnectionCommand}" Content="测试连接"/>
+              <Button Classes="primary" Padding="10,6" Command="{Binding TaskHall.WriteConnectorCommand}" Content="写入连接器"/>
+            </StackPanel>
+            <TextBlock Text="{Binding TaskHall.StatusText}" FontSize="11" TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+          </StackPanel>
+        </Border>
+
         <!-- ═══ 技能包 / 连接器 / 链上钱包（与移动「设置」浮层同一份控件 CapabilitiesView）═══ -->
         <views:CapabilitiesView/>
 

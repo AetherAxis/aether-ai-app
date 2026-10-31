@@ -487,6 +487,10 @@ public partial class App : Application
         // 本来就有，agent 聊天里直接用；历史 app-audit.json 与已种的 SKILL.md 留在数据目录不受影响。 ——
 
         services.AddSingleton<ChatPickersViewModel>();   // 输入卡头部两个选择器（2026-10-31 自 ChatViewModel 拆出）
+        // 任务堂终端（⑱，M2）：凭证 store（taskhall.json，数据目录）+ 设置页凭证卡 VM。
+        // M3 的 TaskDispatchService 读同一份 store。
+        services.AddSingleton(new TaskHallSettingsStore(Path.Combine(dataDir, "taskhall.json")));
+        services.AddSingleton<TaskHallSettingsViewModel>();
         services.AddSingleton<ChatViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AgentsViewModel>();   // agent 管理窗（聊天顶部下拉末项「管理 agent…」进入）

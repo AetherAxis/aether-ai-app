@@ -43,4 +43,10 @@
     <ProjectReference Include="..\..\..\aether-ai\src\Aether.AI.Mcp\Aether.AI.Mcp.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- ⑱ aether-taskhall：任务堂终端（M2）——设置页凭证卡 + 测试连接（Client 传递 Contract）。
+         M3 的 TaskDispatchService（派遣接收）读同一份 TaskHallSettingsStore。 -->
+    <ProjectReference Include="..\..\..\aether-taskhall\src\Aether.TaskHall.Client\Aether.TaskHall.Client.csproj" />
+  </ItemGroup>
+
 </Project>

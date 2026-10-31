@@ -19,7 +19,7 @@ jobs:
         with:
           path: aether-ai-app
       # 跨仓依赖（本地 ProjectReference 拓扑——切 PackageReference 后可移除）：
-      # ai-app → aether-ai / aether-workbench / aether-ai-integrations
+      # ai-app → aether-ai / aether-workbench / aether-ai-integrations / aether-taskhall（⑱，2026-10-31 M2 起）
       - uses: actions/checkout@v4
         with:
           repository: AetherAxis/aether-ai
@@ -52,6 +52,10 @@ jobs:
           dotnet-version: 10.0.x
       # L1：桌面链构建（Core/App/Desktop）。src 的 Android/iOS head 需本机 workload，CI 不覆盖——
       #     移动 TFM 的构建与实跑见 README M0 记录，后续增专门 workflow。
+      - uses: actions/checkout@v4
+        with:
+          repository: AetherAxis/aether-taskhall
+          path: aether-taskhall
       - name: Build
         run: dotnet build aether-ai-app/src/Aether.AI.App.Desktop/Aether.AI.App.Desktop.csproj -c Release
       # L1.5：测试（Core 引擎分段/审批/持久化往返 + VM 级集成——真实组合根全链路）

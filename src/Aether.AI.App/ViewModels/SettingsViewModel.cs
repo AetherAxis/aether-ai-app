@@ -68,6 +68,9 @@ public partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(SaveButtonText));
     }
 
+    /// <summary>任务堂终端凭证卡（M2）——设备号 + secret + 写入连接器。</summary>
+    public TaskHallSettingsViewModel TaskHall { get; }
+
     /// <summary>⑩ 工作台 shell——设置页的「外观」区（主题列表 + 重置布局）从这里取宿主能力。
     /// 旧版这些在 rail 底部齿轮的 flyout 里；底部入口改成直达设置页后合并进来。null = 无工作台形态（隐藏外观区）。</summary>
     public WorkbenchShellViewModel? Shell { get; }
@@ -84,6 +87,7 @@ public partial class SettingsViewModel : ObservableObject
         // 宿主类型从工具注册表读（同一份判定源：⑫ ToolRegistry.CurrentHost → AetherAIOptions.Host）。
         _isDesktop = serviceProvider.GetService<Aether.AI.Harness.Tools.ToolRegistry>()?.CurrentHost
                      != HostCapability.MobileOnly;
+        TaskHall = serviceProvider.GetRequiredService<TaskHallSettingsViewModel>();
         _state.Changed += () => Reload();
         Reload();
     }
